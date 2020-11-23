@@ -8,10 +8,17 @@
 #include <iostream>
 #include <set>
 #include <algorithm>
+#include "reed_muller.h"
 
 using namespace std;
 
 const int INF = 10000;
+
+size_t get_first_one(vector<bool> t) {
+    for (size_t i = 0; i < t.size(); i++)
+        if (t[i])
+            return i;
+}
 
 struct matrix {
     size_t n{}, m{};
@@ -31,8 +38,59 @@ struct matrix {
         }
     }
 
-    void to_span() {
+    matrix(std::vector<std::vector<bool>> &mat) {
+        n = mat.size();
+        for (size_t i = 0; i < n; i++) {
+            m = mat[0].size();
+            mt.push_back(mat[i]);
+        }
+    }
 
+    static bool span_cmp(vector<bool> a, vector<bool> b) {
+        return get_first_one(a) < get_first_one(b);
+    }
+
+    void change_first() {
+        for (size_t iter = 0; iter < m; iter++) {
+            sort(mt.begin(), mt.end(), span_cmp);
+            int cur_ind = -1;
+            int cur_row = -1;
+            for (size_t i = 0; i < n; i++) {
+                size_t v = get_first_one(mt[i]);
+                if (v == cur_ind)
+                    for (size_t j = 0; j < m; j++)
+                        mt[i][j] = (mt[cur_row][j] ^ mt[i][j]);
+                else {
+                    cur_ind = get_first_one(mt[i]);
+                    cur_row = i;
+                }
+            }
+
+        }
+        sort(mt.begin(), mt.end(), span_cmp);
+    }
+
+    void change_last() {
+        vector<vector<size_t>> ends(m);
+        for (size_t i = 0; i < n; i++)
+            for (size_t j = m - 1; j >= 0; j--)
+                if (mt[i][j]) {
+                    ends[j].push_back(i);
+                    break;
+                }
+        for (size_t i = 0; i < m; i++) {
+            if (ends[i].size() < 2)
+                continue;
+            for (size_t j = 0; j < ends[i].size() - 1; j++)
+                for (size_t k = 0; k < m; k++)
+                    mt[ends[i][j]][k] = (mt[ends[i][j]][k] ^ mt[ends[i].back()][k]);
+        }
+    }
+
+    void to_span() {
+        change_first();
+        for (size_t i = 0; i < m; i++)
+            change_last();
     }
 
     void print() {
@@ -71,14 +129,9 @@ vector<vector<size_t>> profile(matrix a) {
     return lengths;
 }
 
-bool get_bit(size_t x, size_t i, size_t n) {
-    return ((x >> (n - 1 - i)) & 1);
-}
 
 void add_bit(size_t &x, size_t i, size_t n) {
-    //cout << x << ' ' << i << ' ' << n << "\n";
     x = (x | (1 << (n - 1 - i)));
-    //cout << x << ' ' << i << ' ' << n << "\n";
 }
 
 struct edge {
@@ -208,25 +261,16 @@ vector<size_t> decode(matrix t, vector<bool> code) {
 
 
 int main() {
-    string s;
-    s = "1110010100000000"
-        "0110011110000000"
-        "0011100000000000"
-        "0000101100100000"
-        "0000011101011000"
-        "0000000101110100"
-        "0000000011110110"
-        "0000000000001101";
-    matrix t(8, 16);
-    vector<bool> code{0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0};
-    for (size_t i = 0; i < 8; i++)
-        for (size_t j = 0; j < 16; j++)
-            t.mt[i][j] = (s[16 * i + j] == '1');
+    ReedMuller reedMuller(2, 5);
+    matrix t(reedMuller.generated);
     t.print();
-    auto ans = decode(t, code);
-    cout << ans.size() << "\n";
-    for (size_t i = 0; i < ans.size(); i++)
-        cout << ans[i] << ' ';
+    t.to_span();
+    std::cout << "\n";
+    t.print();
+//    auto ans = decode(t, code);
+//    cout << ans.size() << "\n";
+//    for (size_t i = 0; i < ans.size(); i++)
+//        cout << ans[i] << ' ';
 }
 
 
