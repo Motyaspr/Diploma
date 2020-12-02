@@ -3,6 +3,7 @@ project(Diploma)
 
 set(CMAKE_CXX_STANDARD 14)
 
+set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG -Wall -O2")
 
 add_executable(Diploma
         viterbi/viterbi.cpp
