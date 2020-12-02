@@ -371,8 +371,8 @@ int main() {
     for (double Eb_N0_dB = 0; Eb_N0_dB <= 6.0; Eb_N0_dB += 1.0) {
         int cnt = 0;
         for (size_t i = 0; i < 10000000; i++) {
-            double sigma_square = 1.0 / (pow(10.0, Eb_N0_dB / 10));
-            std::normal_distribution<> d{0, sigma_square};
+            double sigma_square = (1.0 / (2.0 * ((double)t.n / t.m) * (pow(10.0, Eb_N0_dB / 10))));
+            std::normal_distribution<> d{0, sqrt(sigma_square)};
             std::vector<bool> coded = code_matrix(t, gen_rand_vect(t.n));
             std::vector<double> noise;
             noise.reserve(coded.size());
@@ -383,8 +383,8 @@ int main() {
             if (!cmp(coded, decoded))
                 cnt++;
         }
-        std::cout << "\n";
-        std::cout << Eb_N0_dB << ' ' << (double) cnt / 1000000 << "\n";
+        std::cout.precision(7);
+        std::cout << std::fixed << (int)Eb_N0_dB << ' ' << (double) cnt / 10000000 << "\n";
     }
 
 }
