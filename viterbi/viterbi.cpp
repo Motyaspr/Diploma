@@ -4,7 +4,6 @@
 
 #include <utility>
 #include <vector>
-#include <string>
 #include <iostream>
 #include <set>
 #include <algorithm>
@@ -17,6 +16,8 @@
 
 const int INF = 10000;
 
+const int ITER = 1000000;
+
 size_t get_first_one(std::vector<bool> t) {
     for (size_t i = 0; i < t.size(); i++)
         if (t[i])
@@ -27,10 +28,12 @@ size_t get_first_one(std::vector<bool> t) {
 struct matrix {
     size_t n{}, m{};
     std::vector<std::vector<bool>> mt;
+    std::vector<size_t> ones;
 
     matrix() {
         n = 0, m = 0;
         mt.resize(n);
+        ones.resize(n);
     }
 
     matrix(size_t nn, size_t mm) {
@@ -44,6 +47,7 @@ struct matrix {
 
     matrix(std::vector<std::vector<bool>> &mat) {
         n = mat.size();
+        ones.resize(n);
         for (size_t i = 0; i < n; i++) {
             m = mat[0].size();
             mt.push_back(mat[i]);
@@ -95,6 +99,8 @@ struct matrix {
         change_first();
         for (size_t i = 0; i < m; i++)
             change_last();
+        for (size_t i = 0; i < n; i++)
+            ones[i] = get_first_one(mt[i]);
     }
 
     void print() {
@@ -147,7 +153,7 @@ struct edge {
         nxt = 0;
     };
 
-    edge(size_t  nxt1, int w1) : nxt(nxt1), w(w1) {};
+    edge(size_t nxt1, int w1) : nxt(nxt1), w(w1) {};
 };
 
 struct vertex {
@@ -229,49 +235,21 @@ std::vector<std::vector<vertex>> create_graph(matrix t) {
     return trellis;
 }
 
-double get_prob(double x, bool y, double sigma_2) {
-    double t = 1 / sqrt(2 * M_PI * sigma_2);
-    double v = (y == 1) ? exp(-((x - 1) * (x - 1)) / (2 * sigma_2)) : exp(-((x + 1) * (x + 1)) / (2 * sigma_2));
-    return t * v;
+std::vector<bool>
+get_message(matrix &t, std::vector<bool> &word) {
+    std::vector<bool> ans(t.n, 0);
+    for (size_t i = 0; i < t.n; i++) {
+        ans[i] = word[t.ones[i]];
+        if (word[t.ones[i]])
+            for (size_t j = 0; j < word.size(); j++)
+                word[j] = (word[j] ^ t.mt[i][j]);
+    }
+    return ans;
 }
 
-std::vector<size_t> decode_bool(matrix &t, std::vector<bool> &code) {
-    auto trellis = create_graph(t);
-    std::vector<std::vector<int>> dp, p;
-    dp.resize(trellis.size());
-    p.resize(trellis.size());
-    for (size_t i = 0; i < trellis.size(); i++) {
-        dp[i].resize(trellis[i].size(), 0.0);
-        p[i].resize(trellis[i].size(), -1);
-    }
-    dp[0][0] = 1.0;
-    for (size_t i = 0; i < dp.size() - 1; i++)
-        for (size_t j = 0; j < dp[i].size(); j++) {
-
-            if (dp[i + 1][trellis[i][j].zer.nxt] > dp[i][j] + (trellis[i][j].zer.w ^ code[i])) {
-                dp[i + 1][trellis[i][j].zer.nxt] = dp[i][j] + (trellis[i][j].zer.w ^ code[i]);
-                p[i + 1][trellis[i][j].zer.nxt] = j;
-            }
-            if (trellis[i][j].one.w != -1) {
-                if (dp[i + 1][trellis[i][j].one.nxt] > dp[i][j] + (trellis[i][j].one.w ^ code[i])) {
-                    dp[i + 1][trellis[i][j].one.nxt] = dp[i][j] + (trellis[i][j].one.w ^ code[i]);
-                    p[i + 1][trellis[i][j].one.nxt] = j;
-                }
-            }
-        }
-    std::vector<size_t> errs;
-    size_t curj = 0;
-    for (size_t i = dp.size() - 1; i >= 1; i--) {
-        if (dp[i][curj] != dp[i - 1][p[i][curj]])
-            errs.push_back(i - 1);
-        curj = p[i][curj];
-    }
-    reverse(errs.begin(), errs.end());
-    return errs;
-}
 
 std::vector<bool>
-decode(std::vector<double> &code, double sigma_2, std::vector<std::vector<vertex>> trellis) {
+decode(std::vector<double> &code, std::vector<std::vector<vertex>> trellis) {
     std::vector<std::vector<int>> p;
     std::vector<std::vector<double>> dp;
     dp.resize(trellis.size());
@@ -282,17 +260,14 @@ decode(std::vector<double> &code, double sigma_2, std::vector<std::vector<vertex
     }
     dp[0][0] = 0.0;
     for (size_t i = 0; i < dp.size() - 1; i++) {
-        std::pair<double, double> ws = {get_prob(code[i], false, sigma_2), get_prob(code[i], true, sigma_2)};
         for (size_t j = 0; j < dp[i].size(); j++) {
-            double w = (trellis[i][j].zer.w == 0) ? ws.first : ws.second;
-            //std::cout << code[i] << ' ' << trellis[i][j].zer.w << ' ' << w << "\n";
-            //std::cout << 0 << ' ' << trellis[i][j].zer.w << "\n";
+            double w = (trellis[i][j].zer.w == 0) ? -code[i] : code[i];
             if (dp[i + 1][trellis[i][j].zer.nxt] > dp[i][j] + w) {
                 dp[i + 1][trellis[i][j].zer.nxt] = dp[i][j] + w;
                 p[i + 1][trellis[i][j].zer.nxt] = j;
             }
             if (trellis[i][j].one.w != -1) {
-                w = (trellis[i][j].one.w == 0) ? ws.first : ws.second;;
+                w = (trellis[i][j].one.w == 0) ? -code[i] : code[i];
                 if (dp[i + 1][trellis[i][j].one.nxt] > dp[i][j] + w) {
                     dp[i + 1][trellis[i][j].one.nxt] = dp[i][j] + w;
                     p[i + 1][trellis[i][j].one.nxt] = j;
@@ -311,6 +286,7 @@ decode(std::vector<double> &code, double sigma_2, std::vector<std::vector<vertex
         curj = new_curj;
     }
     reverse(ans.begin(), ans.end());
+    //std::cout << dp.back().back() << "\n";
     return ans;
 }
 
@@ -347,11 +323,12 @@ std::vector<double> add_noise(std::vector<bool> &message, std::vector<double> &n
     return res;
 }
 
-bool cmp(std::vector<bool> &a, std::vector<bool> &b) {
+int cmp(std::vector<bool> &a, std::vector<bool> &b) {
+    int cnt = 0;
     for (size_t i = 0; i < a.size(); i++)
         if (a[i] != b[i])
-            return false;
-    return true;
+            cnt++;
+    return cnt;
 }
 
 
@@ -363,28 +340,30 @@ int main() {
     ReedMuller reedMuller(2, 5);
     matrix t(reedMuller.generated);
     t.print();
+    std::cout << "\n";
     t.to_span();
     t.print();
 
     std::vector<std::vector<vertex>> trellis = create_graph(t);
 
-    for (double Eb_N0_dB = 0; Eb_N0_dB <= 6.0; Eb_N0_dB += 1.0) {
+    for (double Eb_N0_dB = -0.0; Eb_N0_dB <= 6.0; Eb_N0_dB += 1.) {
         int cnt = 0;
-        for (size_t i = 0; i < 10000000; i++) {
-            double sigma_square = (1.0 / (2.0 * ((double)t.n / t.m) * (pow(10.0, Eb_N0_dB / 10))));
-            std::normal_distribution<> d{0, sqrt(sigma_square)};
-            std::vector<bool> coded = code_matrix(t, gen_rand_vect(t.n));
+        double sigma_square = 0.5 * ((double) t.m / t.n) * ((double)pow(10.0, -Eb_N0_dB / 10));
+        std::normal_distribution<> d{0, sqrt(sigma_square)};
+        for (size_t i = 0; i < ITER; i++) {
+            std::vector<bool> word = gen_rand_vect(t.n);
+            std::vector<bool> coded = code_matrix(t, word);
             std::vector<double> noise;
             noise.reserve(coded.size());
             for (size_t j = 0; j < coded.size(); j++)
                 noise.push_back(d(gen));
             auto x = add_noise(coded, noise);
-            auto decoded = decode(x, sigma_square, trellis);
-            if (!cmp(coded, decoded))
-                cnt++;
+            auto recieve = decode(x, trellis);
+            auto decoded = get_message(t, recieve);
+            cnt += cmp(decoded, word);
         }
         std::cout.precision(7);
-        std::cout << std::fixed << (int)Eb_N0_dB << ' ' << (double) cnt / 10000000 << "\n";
+        std::cout << std::fixed << (int)Eb_N0_dB << ' ' << (double) cnt / (ITER * t.n) << "\n";
     }
 
 }
