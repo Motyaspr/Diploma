@@ -11,8 +11,8 @@ struct pMatrix {
     pMatrix *fir, *sec;
     int l, r, third_sz, fourth_sz;
     std::vector<std::vector<bool>> mt;
-    std::vector<branch> cosets;
-    std::vector<std::pair<double, unsigned long long>> cbt;
+    std::vector<branch> rules;
+    std::vector<std::pair<double, unsigned long long>> CBT;
 
     pMatrix(int _l, int _r) {
         l = _l;
@@ -24,7 +24,7 @@ struct pMatrix {
         fourth_sz = 0;
     }
 
-    void createBig(const matrix &generator) {
+    void combCBT(const matrix &generator) {
         int mid = (l + r) / 2;
         std::vector<std::pair<int, std::vector<bool>>> t;
         for (const auto &i : generator.mt) {
@@ -44,7 +44,7 @@ struct pMatrix {
         mt = std::move(prepare_matrix(x, fourth_sz));
     }
 
-    void createSmall(const matrix &generator) {
+    void makeCBT(const matrix &generator) {
         bool f = false;
         mt.resize(1, std::vector<bool>(1, false));
         for (size_t i = 0; i < generator.n; i++)
@@ -58,11 +58,11 @@ struct pMatrix {
         fourth_sz = 1;
     }
 
-    void smallCosets() {
-        cosets.resize(2, {-1, -1, 0});
-        cbt.resize(2);
+    void prepareLengthOne() {
+        rules.resize(2, {-1, -1, 0});
+        CBT.resize(2);
         if (mt[0][0] == 1)
-            cosets[1] = {-1, -1, 1};
+            rules[1] = {-1, -1, 1};
     }
 
     void printMt() {
@@ -101,12 +101,12 @@ struct pMatrix {
         }
         long long cosets_count = (1ll << (fourth_sz));
         long long masks_count = (1ll << (third_sz + fourth_sz));
-        cbt.resize(cosets_count, {-INF, 0});
+        CBT.resize(cosets_count, {-INF, 0});
         for (size_t i = 0; i < masks_count; i++) {
             int fir_ind = get_ind(left_system_solutions, i, fir->fourth_sz);
             int sec_ind = get_ind(right_system_solutions, i, sec->fourth_sz);
-            int coset = i % cosets_count;
-            cosets.push_back({fir_ind, sec_ind, coset});
+            int rule = i % cosets_count;
+            rules.push_back({fir_ind, sec_ind, rule});
         }
     }
 
@@ -114,8 +114,8 @@ struct pMatrix {
 
 void run(pMatrix *x, const matrix &generator) {
     if (x->r - x->l == 1) {
-        x->createSmall(generator);
-        x->smallCosets();
+        x->makeCBT(generator);
+        x->prepareLengthOne();
 //        x->printMt();
         return;
     }
@@ -124,7 +124,7 @@ void run(pMatrix *x, const matrix &generator) {
     x->sec = new pMatrix(mid, x->r);
     run(x->fir, generator);
     run(x->sec, generator);
-    x->createBig(generator);
+    x->combCBT(generator);
 //    x->printMt();
     x->merge();
 }
@@ -133,32 +133,32 @@ unsigned long long decode(pMatrix *x, const std::vector<double> &data) {
     if (x->is_leaf) {
         int curs = (data[x->l] > 0) ? 1 : 0;
         double value = abs(data[x->l]);
-        x->cbt.assign(x->cbt.size(), {-INF, 0});
-        x->cbt[x->cosets[curs].val] = {value, curs};
+        x->CBT.assign(x->CBT.size(), {-INF, 0});
+        x->CBT[x->rules[curs].val] = {value, curs};
         if (x->mt[0][0]) {
-            x->cbt[(x->cosets[1 ^ curs].val)] = {-value, 1 ^ curs};
+            x->CBT[(x->rules[1 ^ curs].val)] = {-value, 1 ^ curs};
         }
     } else {
         int mid = (x->l + x->r) / 2;
-        x->cbt.assign(x->cbt.size(), {-INF, 0});
+        x->CBT.assign(x->CBT.size(), {-INF, 0});
         decode(x->sec, data);
         decode(x->fir, data);
-        for (auto &ind : x->cosets) {
-            double sum = x->fir->cbt[ind.ind_l].first + x->sec->cbt[ind.ind_r].first;
-            if (x->cbt[ind.val].first < sum) {
-                x->cbt[ind.val] = {sum,
-                                   x->fir->cbt[ind.ind_l].second + ((x->sec->cbt[ind.ind_r].second) << (mid - x->l))};
+        for (auto &ind : x->rules) {
+            double sum = x->fir->CBT[ind.ind_l].first + x->sec->CBT[ind.ind_r].first;
+            if (x->CBT[ind.val].first < sum) {
+                x->CBT[ind.val] = {sum,
+                                   x->fir->CBT[ind.ind_l].second + ((x->sec->CBT[ind.ind_r].second) << (mid - x->l))};
             }
         }
     }
-    return x->cbt[0].second;
+    return x->CBT[0].second;
 }
 
 int main() {
     srand(time(NULL));
     std::random_device rd{};
     std::mt19937 gen{rd()};
-    ReedMuller reedMuller(1, 3);
+    ReedMuller reedMuller(2, 5);
     matrix t(reedMuller.generated);
     t.to_span();
     auto *ptr = new pMatrix(0, t.m);
