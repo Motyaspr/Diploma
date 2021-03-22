@@ -12,6 +12,20 @@ bool get_bit(size_t x, size_t i, size_t n) {
     return ((x >> (n - 1 - i)) & 1);
 }
 
+std::vector<bool> mul(std::vector<bool> &a, std::vector<bool> &b) {
+    std::vector<bool> ans;
+    ans.reserve(a.size());
+    for (size_t i = 0; i < a.size(); i++)
+        ans.push_back(a[i] & b[i]);
+    return ans;
+}
+
+void add(std::vector<bool> &a, const std::vector<bool> &b) {
+    for (size_t j = 0; j < a.size(); j++)
+        a[j] = (a[j] ^ b[j]);
+
+}
+
 struct ReedMuller {
     int r, m, n;
     std::vector<std::vector<bool>> generated;
@@ -33,7 +47,6 @@ struct ReedMuller {
     }
 
 
-
     std::vector<bool> get_ones() const {
         std::vector<bool> a = std::vector<bool>(1 << m, true);
         return a;
@@ -48,14 +61,6 @@ struct ReedMuller {
                 t[i][j] = get_bit(j, i, m);
             }
         return t;
-    }
-
-    std::vector<bool> mul(std::vector<bool> &a, std::vector<bool> &b) {
-        std::vector<bool> ans;
-        ans.reserve(a.size());
-        for (size_t i = 0; i < a.size(); i++)
-            ans.push_back(a[i] & b[i]);
-        return ans;
     }
 
     void gen_rest(std::vector<std::vector<bool>> &t) {
@@ -83,7 +88,7 @@ struct ReedMuller {
         std::cout << n << "\n";
         generated.push_back(get_ones());
         auto t = get_G1();
-        for (const auto & i : t)
+        for (const auto &i : t)
             generated.push_back(i);
         gen_rest(t);
     }
