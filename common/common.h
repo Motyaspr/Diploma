@@ -18,7 +18,7 @@
 
 const int INF = 10000;
 
-const int ITER = 100;
+const int ITER = 10000;
 
 
 size_t get_first_one(std::vector<bool> t) {
@@ -85,7 +85,7 @@ struct matrix {
         std::vector<std::vector<size_t>> ends(m);
         for (size_t i = 0; i < n; i++)
             for (size_t j = m - 1; j >= 0; j--)
-                if (mt[i][j]) {
+                if (mt[i][j] || j == 0) {
                     ends[j].push_back(i);
                     break;
                 }

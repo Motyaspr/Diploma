@@ -129,7 +129,7 @@ void run(pMatrix *x, const matrix &generator) {
     x->merge();
 }
 
-unsigned long long decode(pMatrix *x, const std::vector<double> &data) {
+unsigned long long decode(pMatrix *x, const std::vector<double> &data, long long &comps, long long &adds) {
     if (x->is_leaf) {
         int curs = (data[x->l] > 0) ? 1 : 0;
         double value = abs(data[x->l]);
@@ -141,10 +141,12 @@ unsigned long long decode(pMatrix *x, const std::vector<double> &data) {
     } else {
         int mid = (x->l + x->r) / 2;
         x->CBT.assign(x->CBT.size(), {-INF, 0});
-        decode(x->sec, data);
-        decode(x->fir, data);
+        decode(x->sec, data, comps, adds);
+        decode(x->fir, data, comps, adds);
         for (auto &ind : x->rules) {
             double sum = x->fir->CBT[ind.ind_l].first + x->sec->CBT[ind.ind_r].first;
+            adds++;
+            comps++;
             if (x->CBT[ind.val].first < sum) {
                 x->CBT[ind.val] = {sum,
                                    x->fir->CBT[ind.ind_l].second + ((x->sec->CBT[ind.ind_r].second) << (mid - x->l))};
@@ -154,15 +156,15 @@ unsigned long long decode(pMatrix *x, const std::vector<double> &data) {
     return x->CBT[0].second;
 }
 
-int main() {
-    srand(time(NULL));
+void check(int r, int m) {
     std::random_device rd{};
     std::mt19937 gen{rd()};
-    ReedMuller reedMuller(2, 5);
+    ReedMuller reedMuller(r, m);
     matrix t(reedMuller.generated);
-    t.to_span();
     auto *ptr = new pMatrix(0, t.m);
     run(ptr, t);
+    std::cout << "created\n";
+    long long comps = 0, adds = 0;
     for (double Eb_N0_dB = -0.0; Eb_N0_dB <= 6.0; Eb_N0_dB += 1.) {
         int cnt = 0;
         double sigma_square = 0.5 * ((double) t.m / t.n) * ((double) pow(10.0, -Eb_N0_dB / 10));
@@ -176,12 +178,27 @@ int main() {
                 noise.push_back(d(gen));
             auto x = add_noise(coded, noise);
             std::vector<bool> recieve(coded.size(), false);
-            auto ans = decode(ptr, x);
+            auto ans = decode(ptr, x, comps, adds);
             to_vector(ans, recieve);
-            cnt += cmp(recieve, coded);
+            auto decoded = get_message(t, recieve);
+            cnt += cmp(decoded, word);
         }
         std::cout.precision(7);
         std::cout << std::fixed << (int) Eb_N0_dB << ' ' << (double) cnt / ITER << "\n";
     }
+    std::cout << std::fixed << "Count of adds and cmps:" << (double) (comps + adds) / (ITER * 7) << "\n";
+    std::cout << std::fixed << "Count of adds:" << (double) (adds) / (ITER * 7) << "\n";
+    std::cout << std::fixed << "Count of cmps:" << (double) (comps) / (ITER * 7) << "\n";
+    delete ptr;
+}
+
+int main() {
+    srand(time(NULL));
+//    check(1, 3);
+//    check(2, 5);
+//    check(2, 6);
+    check(3, 6);
+    check(4, 6);
+    return 0;
 }
 
