@@ -1,9 +1,10 @@
 #include "common.h"
 #include "reed_muller.h"
 
+const int MIN_MAKECBT = 2;
+
 struct branch {
     long long ind_l, ind_r, val;
-
 };
 
 struct pMatrix {
@@ -17,15 +18,14 @@ struct pMatrix {
     pMatrix(int _l, int _r) {
         l = _l;
         r = _r;
-        is_leaf = ((r - l) == 1);
+        is_leaf = ((r - l) <= MIN_MAKECBT);
         fir = nullptr;
         sec = nullptr;
         third_sz = 0;
         fourth_sz = 0;
     }
 
-    void combCBT(const matrix &generator) {
-        int mid = (l + r) / 2;
+    void combCBT(const matrix &generator, const int &mid) {
         std::vector<std::pair<int, std::vector<bool>>> t;
         for (const auto &i : generator.mt) {
             int type = type_row(i, l, mid, r);
@@ -46,24 +46,26 @@ struct pMatrix {
     }
 
     void makeCBT(const matrix &generator) {
-        bool f = false;
-        mt.resize(1, std::vector<bool>(1, false));
-        for (size_t i = 0; i < generator.n; i++)
-            if (generator.mt[i][l] == 1) {
-                f = true;
-                break;
-            }
-        if (f) {
-            mt[0][0] = true;
-        }
-        fourth_sz = 1;
+        is_leaf = true;
+        combCBT(generator, r);
     }
 
-    void prepareLengthOne() {
-        rules.resize(2, {-1, -1, 0});
-        CBT.resize(2);
-        if (mt[0][0] == 1)
-            rules[1] = {-1, -1, 1};
+    void prepareLengthOneOrTwo() {
+        if (r - l == 1) {
+            rules.resize(2, {-1, -1, 0});
+            CBT.resize(2);
+            if (mt[0][0] == 1)
+                rules[1] = {-1, -1, 1};
+            return;
+        }
+        long long cosets_count = (1ll << (fourth_sz));
+        long long masks_count = (1ll << (third_sz + fourth_sz));
+        CBT.resize(cosets_count);
+        rules.resize(1ll << (r - l));
+        for (size_t i = 0; i < masks_count; i++) {
+            auto x = get_ind(mt, i, r, false);
+            rules[x] = {-1, -1, (long long) i % masks_count};
+        }
     }
 
     void printMt() {
@@ -103,8 +105,8 @@ struct pMatrix {
         long long masks_count = (1ll << (third_sz + fourth_sz));
         CBT.resize(cosets_count, {-INF, 0});
         for (size_t i = 0; i < masks_count; i++) {
-            long long fir_ind = get_ind(left_system_solutions, i, fir->fourth_sz);
-            long long sec_ind = get_ind(right_system_solutions, i, sec->fourth_sz);
+            long long fir_ind = get_ind(left_system_solutions, i, fir->fourth_sz, true);
+            long long sec_ind = get_ind(right_system_solutions, i, sec->fourth_sz, true);
             long long rule = i % cosets_count;
             rules.push_back({fir_ind, sec_ind, rule});
         }
@@ -113,9 +115,9 @@ struct pMatrix {
 };
 
 void run(pMatrix *x, const matrix &generator) {
-    if (x->r - x->l == 1) {
+    if (x->r - x->l <= MIN_MAKECBT) {
         x->makeCBT(generator);
-        x->prepareLengthOne();
+        x->prepareLengthOneOrTwo();
 //        x->printMt();
         return;
     }
@@ -124,20 +126,34 @@ void run(pMatrix *x, const matrix &generator) {
     x->sec = new pMatrix(mid, x->r);
     run(x->fir, generator);
     run(x->sec, generator);
-    x->combCBT(generator);
+    x->combCBT(generator, mid);
 //    x->printMt();
     x->merge();
 }
 
+
+void Gray(pMatrix *x, const std::vector<double> &data, long long &comps, long long &adds) {
+    double total_sum = data[x->l];
+    for (size_t i = x->l + 1; i < x->r; i++) {
+        total_sum += data[i];
+        adds++;
+    }
+
+}
+
 unsigned long long decode(pMatrix *x, const std::vector<double> &data, long long &comps, long long &adds) {
     if (x->is_leaf) {
-        int curs = (data[x->l] > 0) ? 1 : 0;
-        double value = (data[x->l] > 0) ? data[x->l] : -data[x->l];
-        x->CBT.assign(x->CBT.size(), {0, 0});
-        x->CBT[x->rules[curs].val] = {value, curs};
-        if (x->mt[0][0]) {
-            x->CBT[(x->rules[1 ^ curs].val)] = {-value, 1 ^ curs};
+        if (x->r - x->l == 1) {
+            int curs = (data[x->l] > 0) ? 1 : 0;
+            double value = (data[x->l] > 0) ? data[x->l] : -data[x->l];
+            x->CBT.assign(x->CBT.size(), {0, 0});
+            x->CBT[x->rules[curs].val] = {value, curs};
+            if (x->mt[0][0]) {
+                x->CBT[(x->rules[1 ^ curs].val)] = {-value, 1 ^ curs};
+            }
+            return 0;
         }
+
     } else {
         int mid = (x->l + x->r) / 2;
         x->CBT.assign(x->CBT.size(), {0, 0});
@@ -194,11 +210,11 @@ void check(int r, int m) {
             cnt += cmp(decoded, word);
         }
         std::cout.precision(7);
-//        std::cout << std::fixed << (int) Eb_N0_dB << ' ' << (double) cnt / ITER << "\n";
+        std::cout << std::fixed << (int) Eb_N0_dB << ' ' << (double) cnt / ITER << "\n";
     }
-    std::cout << std::fixed << "Count of adds and cmps:" << (double) (comps + adds) / (ITER * 7) << "\n";
-    std::cout << std::fixed << "Count of adds:" << (double) (adds) / (ITER * 7) << "\n";
-    std::cout << std::fixed << "Count of cmps:" << (double) (comps) / (ITER * 7) << "\n";
+    std::cout << "Count of adds and cmps:" << (comps + adds) / (ITER * 7) << "\n";
+    std::cout << "Count of adds:" << (adds) / (ITER * 7) << "\n";
+    std::cout << "Count of cmps:" << (comps) / (ITER * 7) << "\n";
     delete ptr;
 }
 
