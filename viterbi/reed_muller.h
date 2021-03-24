@@ -70,7 +70,12 @@ struct ReedMuller {
 
     void brute(std::vector<std::vector<bool>> &t, size_t k, std::vector<size_t> cur) {
         if (cur.size() == k) {
-            generated.push_back(mul(t[cur[0]], t[cur[1]]));
+            auto x = mul(t[cur[0]], t[cur[1]]);
+            for (size_t i = 2; i < cur.size(); i++) {
+                auto v = mul(x, t[cur[i]]);
+                x = v;
+            }
+            generated.push_back(x);
             return;
         }
         size_t start = (cur.size()) ? cur.back() : -1;
