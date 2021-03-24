@@ -2,7 +2,7 @@
 #include "reed_muller.h"
 
 struct branch {
-    int ind_l, ind_r, val;
+    long long ind_l, ind_r, val;
 
 };
 
@@ -36,6 +36,7 @@ struct pMatrix {
                 fourth_sz++;
             t.emplace_back(type, copy(i, l, r));
         }
+//        std::cout << "KEKer: " << third_sz << ' ' << fourth_sz << "\n";
         std::sort(t.begin(), t.end());
         std::vector<std::vector<bool>> x;
         x.reserve(t.size());
@@ -86,8 +87,6 @@ struct pMatrix {
         ans_l.resize(left[0].size() - 1);
         ans_r.resize(right[0].size() - 1);
         std::vector<std::vector<bool>> left_system_solutions, right_system_solutions;
-
-
         for (size_t i = mt.size() - third_sz - fourth_sz; i < mt.size(); i++) {
             int ind = 0;
             for (auto &j : left)
@@ -99,13 +98,14 @@ struct pMatrix {
             gauss(right, ans_r);
             right_system_solutions.push_back(ans_r);
         }
+//        std::cout << "SYSTEMS SOLVED\n";
         long long cosets_count = (1ll << (fourth_sz));
         long long masks_count = (1ll << (third_sz + fourth_sz));
         CBT.resize(cosets_count, {-INF, 0});
         for (size_t i = 0; i < masks_count; i++) {
-            int fir_ind = get_ind(left_system_solutions, i, fir->fourth_sz);
-            int sec_ind = get_ind(right_system_solutions, i, sec->fourth_sz);
-            int rule = i % cosets_count;
+            long long fir_ind = get_ind(left_system_solutions, i, fir->fourth_sz);
+            long long sec_ind = get_ind(right_system_solutions, i, sec->fourth_sz);
+            long long rule = i % cosets_count;
             rules.push_back({fir_ind, sec_ind, rule});
         }
     }
@@ -132,24 +132,33 @@ void run(pMatrix *x, const matrix &generator) {
 unsigned long long decode(pMatrix *x, const std::vector<double> &data, long long &comps, long long &adds) {
     if (x->is_leaf) {
         int curs = (data[x->l] > 0) ? 1 : 0;
-        double value = abs(data[x->l]);
-        x->CBT.assign(x->CBT.size(), {-INF, 0});
+        double value = (data[x->l] > 0) ? data[x->l] : -data[x->l];
+        x->CBT.assign(x->CBT.size(), {0, 0});
         x->CBT[x->rules[curs].val] = {value, curs};
         if (x->mt[0][0]) {
             x->CBT[(x->rules[1 ^ curs].val)] = {-value, 1 ^ curs};
         }
     } else {
         int mid = (x->l + x->r) / 2;
-        x->CBT.assign(x->CBT.size(), {-INF, 0});
-        decode(x->sec, data, comps, adds);
+        x->CBT.assign(x->CBT.size(), {0, 0});
         decode(x->fir, data, comps, adds);
-        for (auto &ind : x->rules) {
+        decode(x->sec, data, comps, adds);
+        for (size_t i = 0; i < x->rules.size(); i++) {
+            auto &ind = x->rules[i];
             double sum = x->fir->CBT[ind.ind_l].first + x->sec->CBT[ind.ind_r].first;
             adds++;
-            comps++;
-            if (x->CBT[ind.val].first < sum) {
+            if (i < x->CBT.size()) {
                 x->CBT[ind.val] = {sum,
-                                   x->fir->CBT[ind.ind_l].second + ((x->sec->CBT[ind.ind_r].second) << (mid - x->l))};
+                                   x->fir->CBT[ind.ind_l].second +
+                                   ((x->sec->CBT[ind.ind_r].second) << (mid - x->l))};
+
+            } else {
+                comps++;
+                if (x->CBT[ind.val].first < sum) {
+                    x->CBT[ind.val] = {sum,
+                                       x->fir->CBT[ind.ind_l].second +
+                                       ((x->sec->CBT[ind.ind_r].second) << (mid - x->l))};
+                }
             }
         }
     }
@@ -162,10 +171,11 @@ void check(int r, int m) {
     ReedMuller reedMuller(r, m);
     matrix t(reedMuller.generated);
     auto *ptr = new pMatrix(0, t.m);
+    t.to_span();
     run(ptr, t);
-    std::cout << "created\n";
+    std::cout << "RM(" << r << ", " << m << ") created\n";
     long long comps = 0, adds = 0;
-    for (double Eb_N0_dB = -0.0; Eb_N0_dB <= 6.0; Eb_N0_dB += 1.) {
+    for (double Eb_N0_dB = 0.0; Eb_N0_dB <= 6.0; Eb_N0_dB += 1.) {
         int cnt = 0;
         double sigma_square = 0.5 * ((double) t.m / t.n) * ((double) pow(10.0, -Eb_N0_dB / 10));
         std::normal_distribution<> d{0, sqrt(sigma_square)};
@@ -184,7 +194,7 @@ void check(int r, int m) {
             cnt += cmp(decoded, word);
         }
         std::cout.precision(7);
-        std::cout << std::fixed << (int) Eb_N0_dB << ' ' << (double) cnt / ITER << "\n";
+//        std::cout << std::fixed << (int) Eb_N0_dB << ' ' << (double) cnt / ITER << "\n";
     }
     std::cout << std::fixed << "Count of adds and cmps:" << (double) (comps + adds) / (ITER * 7) << "\n";
     std::cout << std::fixed << "Count of adds:" << (double) (adds) / (ITER * 7) << "\n";
@@ -194,9 +204,9 @@ void check(int r, int m) {
 
 int main() {
     srand(time(NULL));
-//    check(1, 3);
-//    check(2, 5);
-//    check(2, 6);
+    check(1, 3);
+    check(2, 5);
+    check(2, 6);
     check(3, 6);
     check(4, 6);
     return 0;
