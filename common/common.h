@@ -18,7 +18,7 @@
 
 const int INF = 10000;
 
-const int ITER = 10000;
+const int ITER = 100;
 
 
 size_t get_first_one(std::vector<bool> t) {
@@ -398,7 +398,7 @@ void gauss(std::vector<std::vector<bool>> a, std::vector<bool> &ans) {
         ans[i] = a[where[i]].back();
 }
 
-size_t get_ind(const std::vector<std::vector<bool>> &system_sols, size_t x, size_t sz) {
+size_t get_ind(const std::vector<std::vector<bool>> &system_sols, size_t &x, int &sz, bool f) {
     std::vector<bool> num;
     int n = system_sols.size();
     for (size_t i = 0; i < n; i++) {
@@ -409,11 +409,13 @@ size_t get_ind(const std::vector<std::vector<bool>> &system_sols, size_t x, size
         if (num[i])
             add(answer, system_sols[i]);
     size_t ans = 0;
-    for (size_t i = answer.size() - sz; i < answer.size(); i++) {
+    size_t st = f ? answer.size() - sz : 0;
+    for (size_t i = st; i < answer.size(); i++) {
         ans *= 2;
         ans += answer[i];
     }
     return ans;
+
 }
 
 

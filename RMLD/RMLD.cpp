@@ -50,7 +50,7 @@ struct pMatrix {
         combCBT(generator, r);
     }
 
-    void prepareLengthOneOrTwo() {
+    void prepareLengthOneOrMore() {
         if (r - l == 1) {
             rules.resize(2, {-1, -1, 0});
             CBT.resize(2);
@@ -64,7 +64,7 @@ struct pMatrix {
         rules.resize(1ll << (r - l));
         for (size_t i = 0; i < masks_count; i++) {
             auto x = get_ind(mt, i, r, false);
-            rules[x] = {-1, -1, (long long) i % masks_count};
+            rules[x] = {-1, -1, (long long) i % cosets_count};
         }
     }
 
@@ -117,15 +117,15 @@ struct pMatrix {
 void run(pMatrix *x, const matrix &generator) {
     if (x->r - x->l <= MIN_MAKECBT) {
         x->makeCBT(generator);
-        x->prepareLengthOneOrTwo();
+        x->prepareLengthOneOrMore();
 //        x->printMt();
         return;
     }
     int mid = (x->l + x->r) / 2;
-    x->fir = new pMatrix(x->l, mid);
     x->sec = new pMatrix(mid, x->r);
-    run(x->fir, generator);
+    x->fir = new pMatrix(x->l, mid);
     run(x->sec, generator);
+    run(x->fir, generator);
     x->combCBT(generator, mid);
 //    x->printMt();
     x->merge();
@@ -133,30 +133,65 @@ void run(pMatrix *x, const matrix &generator) {
 
 
 void Gray(pMatrix *x, const std::vector<double> &data, long long &comps, long long &adds) {
-    double total_sum = data[x->l];
+    double total_sum = -data[x->l];
     for (size_t i = x->l + 1; i < x->r; i++) {
-        total_sum += data[i];
+        total_sum -= data[i];
         adds++;
     }
-
+    auto inverse = x->rules.size() - 1;
+    long long cur_code = 0;
+    for (size_t i = 0; i < x->rules.size() / 2; i++) {
+        long long cur = cur_code;
+        double cur_sum = total_sum;
+//        std::cout << cur_code << ' ';
+        if (cur_sum < 0) {
+            cur ^= inverse;
+            cur_sum = -total_sum;
+        }
+        comps++;
+        if (x->CBT[x->rules[cur].val].first < total_sum) {
+            x->CBT[x->rules[cur].val] = {cur_sum, cur};
+        }
+        if (x->rules[cur].val != x->rules[cur ^ inverse].val) {
+            comps++;
+            if (x->CBT[x->rules[cur ^ inverse].val].first < -cur_sum) {
+                x->CBT[x->rules[cur ^ inverse].val] = {-cur_sum, cur ^ inverse};
+            }
+        }
+        long long pred = cur_code;
+        cur_code = ((i + 1) ^ ((i + 1) >> 1));
+        auto diff = (cur_code ^ pred);
+        for (size_t j = x->l; j < x->r; j++)
+            if ((diff >> (j - x->l)) & 1) {
+                if ((cur_code >> (j - x->l)) & 1)
+                    total_sum += 2 * data[j];
+                else
+                    total_sum -= 2 * data[j];
+                break;
+            }
+        adds++;
+    }
+//    std::cout << "\n";
+    comps -= x->CBT.size();
 }
 
 unsigned long long decode(pMatrix *x, const std::vector<double> &data, long long &comps, long long &adds) {
     if (x->is_leaf) {
+        x->CBT.assign(x->CBT.size(), {-INF, 0});
         if (x->r - x->l == 1) {
             int curs = (data[x->l] > 0) ? 1 : 0;
             double value = (data[x->l] > 0) ? data[x->l] : -data[x->l];
-            x->CBT.assign(x->CBT.size(), {0, 0});
+            x->CBT.assign(x->CBT.size(), {-100, 0});
             x->CBT[x->rules[curs].val] = {value, curs};
             if (x->mt[0][0]) {
-                x->CBT[(x->rules[1 ^ curs].val)] = {-value, 1 ^ curs};
+                x->CBT[x->rules[1 ^ curs].val] = {-value, 1 ^ curs};
             }
             return 0;
         }
+        Gray(x, data, comps, adds);
 
     } else {
         int mid = (x->l + x->r) / 2;
-        x->CBT.assign(x->CBT.size(), {0, 0});
         decode(x->fir, data, comps, adds);
         decode(x->sec, data, comps, adds);
         for (size_t i = 0; i < x->rules.size(); i++) {
