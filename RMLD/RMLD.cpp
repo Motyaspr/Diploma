@@ -13,12 +13,13 @@ struct pMatrix {
     int l, r, third_sz, fourth_sz;
     std::vector<std::vector<bool>> mt;
     std::vector<branch> rules;
+    unsigned long long difficult;
     std::vector<std::pair<double, unsigned long long>> CBT;
 
     pMatrix(int _l, int _r) {
         l = _l;
         r = _r;
-        is_leaf = ((r - l) <= MIN_MAKECBT);
+        is_leaf = false;
         fir = nullptr;
         sec = nullptr;
         third_sz = 0;
@@ -26,6 +27,9 @@ struct pMatrix {
     }
 
     void combCBT(const matrix &generator, const int &mid) {
+        third_sz = 0;
+        fourth_sz = 0;
+        mt.clear();
         std::vector<std::pair<int, std::vector<bool>>> t;
         for (const auto &i : generator.mt) {
             int type = type_row(i, l, mid, r);
@@ -36,7 +40,6 @@ struct pMatrix {
                 fourth_sz++;
             t.emplace_back(type, copy(i, l, r));
         }
-//        std::cout << "KEKer: " << third_sz << ' ' << fourth_sz << "\n";
         std::sort(t.begin(), t.end());
         std::vector<std::vector<bool>> x;
         x.reserve(t.size());
@@ -46,7 +49,6 @@ struct pMatrix {
     }
 
     void makeCBT(const matrix &generator) {
-        is_leaf = true;
         combCBT(generator, r);
     }
 
@@ -59,9 +61,9 @@ struct pMatrix {
             return;
         }
         long long cosets_count = (1ll << (fourth_sz));
-        long long masks_count = (1ll << (third_sz + fourth_sz));
+        long long masks_count = (1ll << (mt.size()));
         CBT.resize(cosets_count);
-        rules.resize(1ll << (r - l));
+        rules.resize(1ll << (r - l), {-1, -1, -1});
         for (size_t i = 0; i < masks_count; i++) {
             auto x = get_ind(mt, i, r, false);
             rules[x] = {-1, -1, (long long) i % cosets_count};
@@ -100,7 +102,6 @@ struct pMatrix {
             gauss(right, ans_r);
             right_system_solutions.push_back(ans_r);
         }
-//        std::cout << "SYSTEMS SOLVED\n";
         long long cosets_count = (1ll << (fourth_sz));
         long long masks_count = (1ll << (third_sz + fourth_sz));
         CBT.resize(cosets_count, {-INF, 0});
@@ -114,16 +115,45 @@ struct pMatrix {
 
 };
 
+void prepare(pMatrix *x, const matrix &generator) {
+    x->difficult = std::numeric_limits<unsigned long long>::max();
+    x->combCBT(generator, -1);
+    int len = x->r - x->l;
+    if (len < 50) {
+        long long adds = (len - 1) + (1ll << (len - 1)) - 1;
+        long long comps = (1ll << (x->mt.size() - 1)) - (1ll << x->fourth_sz);
+        x->difficult = adds + comps;
+    }
+
+    int mid = (x->l + x->r) / 2;
+    if (len == 1) {
+        x->is_leaf = true;
+        return;
+    }
+    x->sec = new pMatrix(mid, x->r);
+    x->fir = new pMatrix(x->l, mid);
+    prepare(x->sec, generator);
+    prepare(x->fir, generator);
+    x->combCBT(generator, mid);
+    unsigned long long total =
+            x->fir->difficult + x->sec->difficult + ((2ull << (x->third_sz + x->fourth_sz)) - (1ull << (x->fourth_sz)));
+    if (total < x->difficult) {
+        x->difficult = total;
+    } else {
+        x->is_leaf = true;
+        delete x->fir;
+        delete x->sec;
+    }
+}
+
 void run(pMatrix *x, const matrix &generator) {
-    if (x->r - x->l <= MIN_MAKECBT) {
+    if (x->is_leaf) {
         x->makeCBT(generator);
         x->prepareLengthOneOrMore();
 //        x->printMt();
         return;
     }
     int mid = (x->l + x->r) / 2;
-    x->sec = new pMatrix(mid, x->r);
-    x->fir = new pMatrix(x->l, mid);
     run(x->sec, generator);
     run(x->fir, generator);
     x->combCBT(generator, mid);
@@ -138,24 +168,27 @@ void Gray(pMatrix *x, const std::vector<double> &data, long long &comps, long lo
         total_sum -= data[i];
         adds++;
     }
-    auto inverse = x->rules.size() - 1;
+    long long inverse = x->rules.size() - 1;
     long long cur_code = 0;
     for (size_t i = 0; i < x->rules.size() / 2; i++) {
         long long cur = cur_code;
         double cur_sum = total_sum;
-//        std::cout << cur_code << ' ';
         if (cur_sum < 0) {
             cur ^= inverse;
             cur_sum = -total_sum;
         }
-        comps++;
-        if (x->CBT[x->rules[cur].val].first < total_sum) {
-            x->CBT[x->rules[cur].val] = {cur_sum, cur};
-        }
-        if (x->rules[cur].val != x->rules[cur ^ inverse].val) {
-            comps++;
-            if (x->CBT[x->rules[cur ^ inverse].val].first < -cur_sum) {
-                x->CBT[x->rules[cur ^ inverse].val] = {-cur_sum, cur ^ inverse};
+        if (x->rules[cur].val != -1) {
+            if (x->CBT[x->rules[cur].val].first != -INF)
+                comps++;
+            if (x->rules[cur].val != -1 && x->CBT[x->rules[cur].val].first < total_sum) {
+                x->CBT[x->rules[cur].val] = {cur_sum, cur};
+            }
+            if (x->rules[cur].val != x->rules[cur ^ inverse].val) {
+                if (x->CBT[x->rules[cur ^ inverse].val].first != -INF)
+                    comps++;
+                if (x->CBT[x->rules[cur ^ inverse].val].first < -cur_sum) {
+                    x->CBT[x->rules[cur ^ inverse].val] = {-cur_sum, cur ^ inverse};
+                }
             }
         }
         long long pred = cur_code;
@@ -171,8 +204,8 @@ void Gray(pMatrix *x, const std::vector<double> &data, long long &comps, long lo
             }
         adds++;
     }
-//    std::cout << "\n";
-    comps -= x->CBT.size();
+    adds--;
+
 }
 
 unsigned long long decode(pMatrix *x, const std::vector<double> &data, long long &comps, long long &adds) {
@@ -189,7 +222,6 @@ unsigned long long decode(pMatrix *x, const std::vector<double> &data, long long
             return 0;
         }
         Gray(x, data, comps, adds);
-
     } else {
         int mid = (x->l + x->r) / 2;
         decode(x->fir, data, comps, adds);
@@ -223,8 +255,10 @@ void check(int r, int m) {
     matrix t(reedMuller.generated);
     auto *ptr = new pMatrix(0, t.m);
     t.to_span();
+    prepare(ptr, t);
     run(ptr, t);
     std::cout << "RM(" << r << ", " << m << ") created\n";
+    std::cout << ptr->difficult << "\n";
     long long comps = 0, adds = 0;
     for (double Eb_N0_dB = 0.0; Eb_N0_dB <= 6.0; Eb_N0_dB += 1.) {
         int cnt = 0;

@@ -18,7 +18,7 @@
 
 const int INF = 10000;
 
-const int ITER = 100;
+const int ITER = 100000;
 
 
 size_t get_first_one(std::vector<bool> t) {
@@ -331,10 +331,12 @@ int type_row(const std::vector<bool> &x, const int &l, const int &m, const int &
     auto p = get_ones(x);
     if (p.first == -1)
         return -1;
-    if (p.first >= l && p.second <= m)
-        return 0;
-    if (p.first >= m && p.second <= r)
-        return 1;
+    if (m != -1) {
+        if (p.first >= l && p.second <= m)
+            return 0;
+        if (p.first >= m && p.second <= r)
+            return 1;
+    }
     if (p.first >= l && p.second <= r)
         return 2;
     return 3;
