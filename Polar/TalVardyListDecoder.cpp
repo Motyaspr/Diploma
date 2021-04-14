@@ -88,6 +88,7 @@ double *TalVardyListDecoder::getArrayPointer_P(uint16_t lam, uint16_t l) {
         inactiveArrayIndices[lam].pop();
         size_t length = (1 << (M - lam + 1));
         std::copy(arrayPointer_P[lam][s], arrayPointer_P[lam][s] + length, arrayPointer_P[lam][new_s]);
+        std::copy(arrayPointer_C[lam][s], arrayPointer_C[lam][s] + length, arrayPointer_C[lam][new_s]);
         arrayReferenceCount[lam][s]--;
         arrayReferenceCount[lam][new_s] = 1;
         pathIndexToArrayIndex[lam][l] = new_s;
@@ -102,6 +103,7 @@ uint8_t *TalVardyListDecoder::getArrayPointer_C(uint16_t lam, uint16_t l) {
         new_s = inactiveArrayIndices[lam].top();
         inactiveArrayIndices[lam].pop();
         size_t length = (1 << (M - lam + 1));
+        std::copy(arrayPointer_P[lam][s], arrayPointer_P[lam][s] + length, arrayPointer_P[lam][new_s]);
         std::copy(arrayPointer_C[lam][s], arrayPointer_C[lam][s] + length, arrayPointer_C[lam][new_s]);
         arrayReferenceCount[lam][s]--;
         arrayReferenceCount[lam][new_s] = 1;
@@ -148,14 +150,13 @@ void TalVardyListDecoder::recursivelyCalcP(uint16_t lam, uint16_t phi) {
             pLambda[2 * bet] /= sigma;
             pLambda[2 * bet + 1] /= sigma;
         }
-        for (size_t i = 0; i < len; i++)
-            std::cout << std::fixed << pLambda[2 * i] << '-' << pLambda[2 * i + 1] << ' ';
-        std::cout << "\n";
+//        for (size_t i = 0; i < len; i++)
+//            std::cout << std::fixed << pLambda[2 * i] << '-' << pLambda[2 * i + 1] << ' ';
+//        std::cout << "\n";
     }
 }
 
 void TalVardyListDecoder::recursivelyUpdateC(uint16_t lam, uint16_t phi) {
-    std::cout << "C " << lam << ' ' << phi << "\n";
     uint16_t psi = (phi >> 1);
     size_t sz = (1 << (M - lam));
     for (size_t l = 0; l < L; l++) {
@@ -168,9 +169,6 @@ void TalVardyListDecoder::recursivelyUpdateC(uint16_t lam, uint16_t phi) {
             cLambdaPred[2 * (b + sz) + psi % 2] = cLambda[2 * b + 1];
         }
     }
-    auto *cLambda = getArrayPointer_C(lam, 0);
-    for (size_t i = 0; i < sz; i++)
-        std::cout << (int) cLambda[2 * i] << '-' << (int) cLambda[2 * i + 1] << "\n";
     if (psi % 2 == 1)
         recursivelyUpdateC(lam - 1, psi);
 }
@@ -237,9 +235,6 @@ void TalVardyListDecoder::continuePaths_FrozenBit(uint16_t phi) {
 }
 
 std::vector<bool> TalVardyListDecoder::decode(const std::vector<double> &word) {
-    for (size_t i = 0; i < frozen.size(); i++)
-        std::cout << frozen[i] << ' ';
-    std::cout << "------\n";
     init_data_structures(false);
     size_t l = assignInitialPath();
     double *p0 = getArrayPointer_P(0, l);
@@ -252,11 +247,9 @@ std::vector<bool> TalVardyListDecoder::decode(const std::vector<double> &word) {
         recursivelyCalcP(M, phi);
         if (uk == frozen.size() || frozen[uk] != phi) {
             continuePaths_UnfrozenBit(phi);
-            std::cout << phi << " Unfrozen\n";
         } else {
             uk++;
             continuePaths_FrozenBit(phi);
-            std::cout << phi << " Frozen\n";
         }
         if (phi % 2)
             recursivelyUpdateC(M, phi);
@@ -273,8 +266,6 @@ std::vector<bool> TalVardyListDecoder::decode(const std::vector<double> &word) {
             p1 = pm[cm[1]];
         }
     }
-    std::cout.precision(5);
-    std::cout << std::fixed << p1 << ' ' << l1 << "\n";
     auto *c0 = getArrayPointer_C(0, l1);
     std::vector<bool> ans;
     for (size_t i = 0; i < (1 << M); i++)

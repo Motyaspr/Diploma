@@ -4,10 +4,9 @@
 #include <common.h>
 
 struct PolarEncoder {
-    std::vector<std::vector<bool>> g;
-    std::vector<std::vector<bool>> A;
     int n, k;
     double sigma;
+    std::vector<size_t> rev;
     std::vector<bool> frozen;
 
     PolarEncoder(int _n, int _k, double _prob) {
@@ -21,13 +20,8 @@ struct PolarEncoder {
         std::sort(rates.begin(), rates.end());
         for (size_t i = 0; i < n - k; i++)
             frozen[rates[i].second] = true;
-        for (size_t i = 0; i < frozen.size(); i++) {
-            if (frozen[i])
-                std::cout << i << ' ';
-        }
-        create_A();
-        auto mat = createB(n);
-        g = mul_matrixes(mat, A);
+        rev = genReversedIndex(n);
+
     }
 
     double get_rate(size_t cur_n, size_t cur_i) {
@@ -41,59 +35,27 @@ struct PolarEncoder {
         return bigXi(rate);
     }
 
-    void create_A() {
-        std::vector<std::vector<bool>> x;
-        x.resize(2, std::vector<bool>(2, true));
-        x[0][1] = 0;
-        int n_cur = n;
-        A.resize(1, std::vector<bool>(1, 1));
-        while (n_cur > 1) {
-            auto ans = kron_mul(A, x);
-            A = ans;
-            n_cur /= 2;
-        }
-    }
-
-    std::vector<std::vector<bool>> calc_r(std::vector<std::vector<bool>> x) {
-        std::vector<std::vector<bool>> ans(x.size());
-        for (size_t i = 0; i < ans.size(); i++) {
-            ans[i].resize(x[i].size());
-            for (size_t j = 0; j < x[i].size(); j++) {
-                if (j % 2 == 0)
-                    ans[i][j / 2] = x[i][j];
-                else
-                    ans[i][x[i].size() / 2 + j / 2] = x[i][j];
-            }
-        }
-        return ans;
-    }
-
-    std::vector<std::vector<bool>> createB(int size) {
-        std::vector<std::vector<bool>> I;
-        I.resize(2, std::vector<bool>(2, false));
-        I[0][0] = true;
-        I[1][1] = true;
-        std::vector<std::vector<bool>> ans = I;
-        for (size_t q = 4; q <= size; q *= 2) {
-            auto x = kron_mul(I, ans);
-            ans = calc_r(x);
-        }
-        return ans;
-    }
 
     std::vector<bool> encode(const std::vector<bool> &word) {
-        std::vector<bool> ans;
+        std::vector<bool> before_shuffle(n);
         int j = 0;
         for (size_t i = 0; i < n; i++)
             if (frozen[i])
-                ans.push_back(0);
+                before_shuffle[i] = 0;
             else
-                ans.push_back(word[j++]);
-        std::cout << "PASSED WORD:\n";
-        for (size_t i = 0; i < ans.size(); i++)
-            std::cout << ans[i] << ' ';
-        std::cout << "\n";
-        return mulVectorMatrix(ans, g);
+                before_shuffle[i] = word[j++];
+        for (unsigned long i = 2; i <= n; i *= 2)
+            for (unsigned long q = 0; q < n; q += i) {
+                unsigned long start = q + i - 1;
+                unsigned long end = q + i / 2 - 1;
+                for (unsigned long cur_k = start; cur_k > end; --cur_k) {
+                    before_shuffle[cur_k - i / 2] = (before_shuffle[cur_k] ^ before_shuffle[cur_k - i / 2]);
+                }
+            }
+        std::vector<bool> codeword(n, 0);
+        for (size_t i = 0; i < rev.size(); i++)
+            codeword[i] = before_shuffle[rev[i]];
+        return before_shuffle;
     }
 
     double bigXi(double x) {
@@ -104,6 +66,19 @@ struct PolarEncoder {
         if (x > 1)
             return x * (0.062883 * x + 0.3678) - 0.1627;
         return x * (0.2202 * x + 0.06448);
+    }
+
+    std::vector<size_t> genReversedIndex(size_t i) {
+        std::vector<size_t> res;
+        res.resize(i);
+        res[0] = 0;
+        for (size_t i1 = 1; i1 < i; i1 <<= 1u) {
+            for (size_t j = 0; j < i1; ++j) {
+                res[j] <<= 1u;
+                res[j + i1] = res[j] + 1;
+            }
+        }
+        return res;
     }
 
 
