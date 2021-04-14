@@ -126,9 +126,9 @@ void TalVardyListDecoder::recursivelyCalcP(uint16_t lam, uint16_t phi) {
         for (size_t b = 0; b < sz; b++) {
             if (phi % 2 == 0) {
                 pLambda[2 * b] = 0.5f * (pLambdaPred[2 * b] * pLambdaPred[2 * (b + sz)] +
-                                       pLambdaPred[2 * b + 1] * pLambdaPred[2 * (b + sz) + 1]);
+                                         pLambdaPred[2 * b + 1] * pLambdaPred[2 * (b + sz) + 1]);
                 pLambda[2 * b + 1] = 0.5f * (pLambdaPred[b * 2 + 1] * pLambdaPred[2 * (b + sz)] +
-                                           pLambdaPred[b * 2] * pLambdaPred[2 * (b + sz) + 1]);
+                                             pLambdaPred[b * 2] * pLambdaPred[2 * (b + sz) + 1]);
             } else {
                 auto u1 = cLambda[2 * b];
                 pLambda[2 * b] = 0.5f * (pLambdaPred[b * 2 + u1] * pLambdaPred[2 * (b + sz)]);
@@ -167,7 +167,7 @@ void TalVardyListDecoder::recursivelyUpdateC(uint16_t lam, uint16_t phi) {
         recursivelyUpdateC(lam - 1, psi);
 }
 
-void TalVardyListDecoder::continuePaths_FrozenBit(uint16_t phi) {
+void TalVardyListDecoder::continuePaths_UnfrozenBit(uint16_t phi) {
     std::vector<double> probForks(2 * L, 0);
     std::vector<std::pair<double, size_t>> probs;
     std::vector<uint8_t> contForks(2 * L, 0);
@@ -218,7 +218,7 @@ void TalVardyListDecoder::continuePaths_FrozenBit(uint16_t phi) {
     }
 }
 
-void TalVardyListDecoder::continuePaths_UnfrozenBit(uint16_t phi) {
+void TalVardyListDecoder::continuePaths_FrozenBit(uint16_t phi) {
     for (size_t l = 0; l < L; l++) {
         if (!activePath[l])
             continue;
