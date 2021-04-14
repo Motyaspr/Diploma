@@ -25,7 +25,6 @@ struct TalVardyListDecoder {
 
     TalVardyListDecoder(int _M, int _K, int _L, double _eps, const std::vector<bool> &_frozen) :
             M(_M), K(_K), L(_L), dist(_eps) {
-        frozen.resize((1 << M) - K);
         for (size_t i = 0; i < _frozen.size(); i++)
             if (_frozen[i])
                 frozen.push_back(i);
