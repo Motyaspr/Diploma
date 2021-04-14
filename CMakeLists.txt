@@ -15,4 +15,8 @@ add_executable(Diploma
 
 add_executable(RMLD RMLD/RMLD.cpp common/common.h viterbi/reed_muller.h)
 
-add_executable(polar polar/encode.cpp polar/polar_encoder.h polar/TalVardyListDecoder.h polar/TalVardyListDecoder.cpp)
+add_library(polar_libary STATIC common/common.h Polar/polar_encoder.h Polar/TalVardyListDecoder.h
+        Polar/TalVardyListDecoder.cpp viterbi/reed_muller.h)
+
+add_executable(polar Polar/encode.cpp)
+target_link_libraries(polar polar_libary)

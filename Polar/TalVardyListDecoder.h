@@ -1,13 +1,13 @@
 #ifndef DIPLOMA_TALVARDYLISTDECODER_H
 #define DIPLOMA_TALVARDYLISTDECODER_H
 
-#include "common.h"
 #include <stack>
+#include <vector>
 
-class TalVardyListDecoder {
+struct TalVardyListDecoder {
     int M, K, L;
 
-    double eps;
+    double dist;
 
     std::vector<size_t> frozen;
 
@@ -21,15 +21,15 @@ class TalVardyListDecoder {
     std::vector<std::stack<uint16_t>> inactiveArrayIndices;
     std::vector<std::vector<uint16_t>> arrayReferenceCount;
 
-    void init_data_structures();
+    void init_data_structures(bool f);
 
-    TalVardyListDecoder(int _M, int _K, int _L, double _eps, std::vector<bool> _frozen) :
-            M(_M), K(_K), L(_L), eps(_eps) {
-        frozen.resize(M - K);
+    TalVardyListDecoder(int _M, int _K, int _L, double _eps, const std::vector<bool> &_frozen) :
+            M(_M), K(_K), L(_L), dist(_eps) {
+        frozen.resize((1 << M) - K);
         for (size_t i = 0; i < _frozen.size(); i++)
             if (_frozen[i])
                 frozen.push_back(i);
-        init_data_structures();
+        init_data_structures(true);
     }
 
     uint16_t assignInitialPath();
@@ -50,7 +50,9 @@ class TalVardyListDecoder {
 
     void continuePaths_UnfrozenBit(uint16_t phi);
 
-    std::vector<bool> decode(const std::vector<bool> &word);
+    std::vector<bool> decode(const std::vector<double> &word);
+
+    double getProb(double x, double dispersion, double expValue);
 
 };
 

@@ -292,9 +292,9 @@ std::vector<double> add_noise(std::vector<bool> &message, std::vector<double> &n
     std::vector<double> res;
     for (size_t i = 0; i < message.size(); i++) {
         if (!message[i])
-            res.push_back(-1 + noise[i]);
+            res.push_back(-1 + 0);
         else
-            res.push_back(1 + noise[i]);
+            res.push_back(1 + 0);
     }
     return res;
 }
@@ -418,6 +418,48 @@ size_t get_ind(const std::vector<std::vector<bool>> &system_sols, size_t &x, int
     }
     return ans;
 
+}
+
+std::vector<std::vector<bool>>
+kron_mul(const std::vector<std::vector<bool>> &a, const std::vector<std::vector<bool>> &b) {
+    std::vector<std::vector<bool>> ans(a.size() * b.size(), std::vector<bool>(a[0].size() * b[0].size(), 0));
+    for (size_t i = 0; i < a.size(); i++) {
+        for (size_t j = 0; j < a[0].size(); j++) {
+            for (size_t x = 0; x < b.size(); x++)
+                for (size_t y = 0; y < b[0].size(); y++)
+                    ans[x * a.size() + i][y * a[0].size() + j] = (a[i][j] & b[x][y]);
+        }
+    }
+    return ans;
+}
+
+void print(const std::vector<std::vector<bool>> &x) {
+    for (size_t i = 0; i < x.size(); i++) {
+        for (size_t j = 0; j < x[0].size(); j++)
+            std::cout << x[i][j] << ' ';
+        std::cout << "\n";
+    }
+}
+
+std::vector<std::vector<bool>>
+mul_matrixes(const std::vector<std::vector<bool>> &a, const std::vector<std::vector<bool>> &b) {
+    std::vector<std::vector<bool>> ans(a.size(), std::vector<bool>(b[0].size(), 0));
+    for (int i = 0; i < a.size(); i++) {
+        for (int j = 0; j < b[0].size(); j++) {
+            for (int q = 0; q < a[0].size(); q++) {
+                ans[i][j] = ((a[i][q] & b[q][j]) ^ ans[i][j]);
+            }
+        }
+    }
+    return ans;
+}
+
+std::vector<bool> mulVectorMatrix(const std::vector<bool> &x, const std::vector<std::vector<bool>> &mat) {
+    std::vector<bool> ans(mat[0].size(), false);
+    for (size_t i = 0; i < mat.size(); i++)
+        if (x[i])
+            add(ans, mat[i]);
+    return ans;
 }
 
 
