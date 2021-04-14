@@ -10,9 +10,9 @@ int main() {
 
     std::random_device rd{};
     std::mt19937 gen{rd()};
-    for (size_t l = 1; l <= 16; l *= 2) {
+    for (size_t l = 16; l <= 16; l *= 2) {
         std::cout << "Polar Code(" << N << ", " << K << ", " << l << ")\n";
-        for (double Eb_N0_dB = -0.0; Eb_N0_dB <= 3.0; Eb_N0_dB += 0.5) {
+        for (double Eb_N0_dB = 2.5; Eb_N0_dB <= 3.0; Eb_N0_dB += 0.5) {
             double sigma_square = 0.5 * ((double) N / K) * ((double) pow(10.0, -Eb_N0_dB / 10));
             std::normal_distribution<> d{0, sqrt(sigma_square)};
             PolarEncoder t(N, K, sqrt(sigma_square));
