@@ -126,14 +126,14 @@ void TalVardyListDecoder::recursivelyCalcP(uint16_t lam, uint16_t phi) {
         size_t sz = (1 << (M - lam));
         for (size_t b = 0; b < sz; b++) {
             if (phi % 2 == 0) {
-                pLambda[2 * b] =  (pLambdaPred[2 * b] * pLambdaPred[2 * (b + sz)] +
-                                         pLambdaPred[2 * b + 1] * pLambdaPred[2 * (b + sz) + 1]);
+                pLambda[2 * b] = (pLambdaPred[2 * b] * pLambdaPred[2 * (b + sz)] +
+                                  pLambdaPred[2 * b + 1] * pLambdaPred[2 * (b + sz) + 1]);
                 pLambda[2 * b + 1] = (pLambdaPred[b * 2 + 1] * pLambdaPred[2 * (b + sz)] +
-                                             pLambdaPred[b * 2] * pLambdaPred[2 * (b + sz) + 1]);
+                                      pLambdaPred[b * 2] * pLambdaPred[2 * (b + sz) + 1]);
             } else {
                 auto u1 = cLambda[2 * b];
                 pLambda[2 * b] = (pLambdaPred[b * 2 + u1] * pLambdaPred[2 * (b + sz)]);
-                pLambda[2 * b + 1] = (pLambdaPred[b * 2 + (1 - u1)] + pLambdaPred[2 * (b + sz) + 1]);
+                pLambda[2 * b + 1] = (pLambdaPred[b * 2 + (1 - u1)] * pLambdaPred[2 * (b + sz) + 1]);
             }
             sigma = std::max(sigma, std::max(pLambda[2 * b], pLambda[2 * b + 1]));
         }
@@ -149,7 +149,7 @@ void TalVardyListDecoder::recursivelyCalcP(uint16_t lam, uint16_t phi) {
             pLambda[2 * bet + 1] /= sigma;
         }
         for (size_t i = 0; i < len; i++)
-            std::cout << std::fixed << pLambda[2*i] << '-' << pLambda[2*i + 1] << ' ';
+            std::cout << std::fixed << pLambda[2 * i] << '-' << pLambda[2 * i + 1] << ' ';
         std::cout << "\n";
     }
 }
@@ -170,7 +170,7 @@ void TalVardyListDecoder::recursivelyUpdateC(uint16_t lam, uint16_t phi) {
     }
     auto *cLambda = getArrayPointer_C(lam, 0);
     for (size_t i = 0; i < sz; i++)
-        std::cout << (int)cLambda[2 * i] << '-' << (int)cLambda[2 * i + 1] << "\n";
+        std::cout << (int) cLambda[2 * i] << '-' << (int) cLambda[2 * i + 1] << "\n";
     if (psi % 2 == 1)
         recursivelyUpdateC(lam - 1, psi);
 }

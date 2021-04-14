@@ -97,13 +97,12 @@ struct PolarEncoder {
     }
 
     double bigXi(double x) {
-        if (x > 12) {
+        if (x > 12)
             return 0.9861 * x - 2.3152;
-        } else if (x > 3.5) {
+        if (x > 3.5)
             return x * (9.005 * 0.001 * x + 0.7694) - 0.9507;
-        } else if (x > 1) {
+        if (x > 1)
             return x * (0.062883 * x + 0.3678) - 0.1627;
-        }
         return x * (0.2202 * x + 0.06448);
     }
 
