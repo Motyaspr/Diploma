@@ -15,6 +15,12 @@ struct pMatrix {
     std::vector<branch> rules;
     unsigned long long difficult;
     std::vector<std::pair<double, unsigned long long>> CBT;
+    std::map<long long, std::vector<std::pair<long long, long long>>> rules_l, rules_r, rules_cos;
+    std::set<std::pair<double, size_t>> q;
+    std::vector<size_t> indexes;
+    std::vector<bool> calculated;
+    int i1, i2;
+
 
     pMatrix(int _l, int _r) {
         l = _l;
@@ -24,6 +30,8 @@ struct pMatrix {
         sec = nullptr;
         third_sz = 0;
         fourth_sz = 0;
+        i1 = 0;
+        i2 = 0;
     }
 
     void combCBT(const matrix &generator, const int &mid) {
@@ -110,6 +118,9 @@ struct pMatrix {
             long long sec_ind = get_ind(right_system_solutions, i, sec->fourth_sz, true);
             long long rule = i % cosets_count;
             rules.push_back({fir_ind, sec_ind, rule});
+            rules_l[fir_ind].push_back({sec_ind, rule});
+            rules_r[sec_ind].push_back({fir_ind, rule});
+            rules_cos[rule].push_back({fir_ind, sec_ind});
         }
     }
 
@@ -162,7 +173,7 @@ void run(pMatrix *x, const matrix &generator) {
 }
 
 
-void Gray(pMatrix *x, const std::vector<double> &data, long long &comps, long long &adds) {
+void Gray(pMatrix *x, const std::vector<double> &data, long long &comps, long long &adds, bool f) {
     double total_sum = -data[x->l];
     for (size_t i = x->l + 1; i < x->r; i++) {
         total_sum -= data[i];
@@ -205,10 +216,27 @@ void Gray(pMatrix *x, const std::vector<double> &data, long long &comps, long lo
         adds++;
     }
     adds--;
+    if (f) {
+        for (size_t i = 0; i < x->CBT.size(); i++) {
+            x->q.insert({-x->CBT[i].first, i});
+        }
+        for (auto it : x->q) {
+            x->indexes.push_back(it.second);
+            x->calculated[it.second] = true;
+        }
+    }
 
 }
 
 unsigned long long decode(pMatrix *x, const std::vector<double> &data, long long &comps, long long &adds) {
+    std::cout << x->l << ' ' << x->r << ' ' << x->CBT.size() << ":\n";
+    for (auto it : x->rules_l) {
+        std::set<size_t> s;
+        for (size_t j = 0; j < it.second.size(); j++)
+            s.insert(it.second[j].second);
+        std::cout << it.first << ' ' << s.size() << "\n";
+    }
+
     if (x->is_leaf) {
         x->CBT.assign(x->CBT.size(), {-INF, 0});
         if (x->r - x->l == 1) {
@@ -221,7 +249,7 @@ unsigned long long decode(pMatrix *x, const std::vector<double> &data, long long
             }
             return 0;
         }
-        Gray(x, data, comps, adds);
+        Gray(x, data, comps, adds, false);
     } else {
         int mid = (x->l + x->r) / 2;
         decode(x->fir, data, comps, adds);
@@ -247,6 +275,66 @@ unsigned long long decode(pMatrix *x, const std::vector<double> &data, long long
     }
     return x->CBT[0].second;
 }
+
+auto poor_calculate(pMatrix *x, long long &comps, long long &adds, size_t b) {
+    if (x->calculated[b])
+        return x->CBT[b];
+    int mid = (x->l + x->r) / 2;
+    for (auto it : x->rules_cos[b]) {
+        auto left_ans = poor_calculate(x->fir, comps, adds, it.first);
+        auto right_ans = poor_calculate(x->sec, comps, adds, it.second);
+        if (x->CBT[b].first == -INF)
+            comps--;
+        if (x->CBT[b].first < left_ans.first + right_ans.first) {
+            x->CBT[b] = {left_ans.first + right_ans.first, left_ans.second + (right_ans.second << (mid - x->l))};
+            adds++;
+            comps++;
+        }
+    }
+    return x->CBT[b];
+}
+
+unsigned long long
+decode2(pMatrix *x, const std::vector<double> &data, long long &comps, long long &adds, int b, int dep) {
+    if (x->is_leaf) {
+        x->CBT.assign(x->CBT.size(), {-INF, 0});
+        if (x->r - x->l == 1) {
+            int curs = (data[x->l] > 0) ? 1 : 0;
+            double value = (data[x->l] > 0) ? data[x->l] : -data[x->l];
+            x->CBT.assign(x->CBT.size(), {-100, 0});
+            x->CBT[x->rules[curs].val] = {value, curs};
+            if (x->mt[0][0]) {
+                x->CBT[x->rules[1 ^ curs].val] = {-value, 1 ^ curs};
+            }
+            for (size_t i = 0; i < x->CBT.size(); i++) {
+                x->q.insert({-x->CBT[i].first, i});
+            }
+            for (auto it : x->q)
+                x->indexes.push_back(it.second);
+            return x->indexes[b];
+        }
+        Gray(x, data, comps, adds, true);
+        return x->indexes[b];
+    } else {
+        int mid = (x->l + x->r) / 2;
+        std::pair<double, unsigned long long> cur_ans_left = {-INF, 0};
+        auto new_r = decode2(x->sec, data, comps, adds, x->i2++, dep + 1);
+        for (size_t j = 0; j < x->rules_r[new_r].size(); j++) {
+            size_t pere_l = x->rules_r[new_r][j].first;
+            auto t = poor_calculate(x->fir, comps, adds, pere_l);
+            comps++;
+            if (t.first > cur_ans_left.first) {
+                cur_ans_left = t;
+            }
+        }
+        comps--;
+        adds++;
+        x->q.insert({-(cur_ans_left.first + x->sec->CBT[new_r].first),
+                     cur_ans_left.second + (x->sec->CBT[new_r].second << (mid - x->l))});
+        auto new_l = decode2(x->fir, data, comps)
+    }
+}
+
 
 void check(int r, int m) {
     std::random_device rd{};
@@ -289,11 +377,11 @@ void check(int r, int m) {
 
 int main() {
     srand(time(NULL));
-    check(1, 3);
-    check(2, 5);
-    check(2, 6);
+//    check(1, 3);
+//    check(2, 5);
+//    check(2, 6);
     check(3, 6);
-    check(4, 6);
+//    check(4, 6);
     return 0;
 }
 
