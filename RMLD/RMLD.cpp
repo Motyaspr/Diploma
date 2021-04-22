@@ -7,6 +7,22 @@ struct branch {
     long long ind_l, ind_r, val;
 };
 
+struct CBT_answer {
+    double prob;
+    unsigned long long word;
+    size_t ind;
+
+    CBT_answer(double _prob, unsigned long long _word, size_t _ind) : prob(_prob), word(_word), ind(_ind) {};
+
+    friend bool operator<(const CBT_answer &l, const CBT_answer &r) {
+        return l.prob > r.prob;
+    }
+
+    friend bool operator==(const CBT_answer &l, const CBT_answer &r) {
+        return l.prob == r.prob;
+    }
+};
+
 struct pMatrix {
     bool is_leaf;
     pMatrix *fir, *sec;
@@ -16,9 +32,10 @@ struct pMatrix {
     unsigned long long difficult;
     std::vector<std::pair<double, unsigned long long>> CBT;
     std::map<long long, std::vector<std::pair<long long, long long>>> rules_l, rules_r, rules_cos;
-    std::set<std::pair<double, size_t>> q;
+    std::set<CBT_answer> q;
     std::vector<size_t> indexes;
     std::vector<bool> calculated;
+    std::set<size_t> cosets;
     int i1, i2;
 
 
@@ -71,6 +88,7 @@ struct pMatrix {
         long long cosets_count = (1ll << (fourth_sz));
         long long masks_count = (1ll << (mt.size()));
         CBT.resize(cosets_count);
+        calculated.resize(cosets_count, false);
         rules.resize(1ll << (r - l), {-1, -1, -1});
         for (size_t i = 0; i < masks_count; i++) {
             auto x = get_ind(mt, i, r, false);
@@ -113,6 +131,7 @@ struct pMatrix {
         long long cosets_count = (1ll << (fourth_sz));
         long long masks_count = (1ll << (third_sz + fourth_sz));
         CBT.resize(cosets_count, {-INF, 0});
+        calculated.resize(cosets_count);
         for (size_t i = 0; i < masks_count; i++) {
             long long fir_ind = get_ind(left_system_solutions, i, fir->fourth_sz, true);
             long long sec_ind = get_ind(right_system_solutions, i, sec->fourth_sz, true);
@@ -218,24 +237,24 @@ void Gray(pMatrix *x, const std::vector<double> &data, long long &comps, long lo
     adds--;
     if (f) {
         for (size_t i = 0; i < x->CBT.size(); i++) {
-            x->q.insert({-x->CBT[i].first, i});
+            x->q.insert({x->CBT[i].first, x->CBT[i].second, i});
         }
         for (auto it : x->q) {
-            x->indexes.push_back(it.second);
-            x->calculated[it.second] = true;
+            x->indexes.push_back(it.ind);
+            x->calculated[it.ind] = true;
         }
     }
 
 }
 
 unsigned long long decode(pMatrix *x, const std::vector<double> &data, long long &comps, long long &adds) {
-    std::cout << x->l << ' ' << x->r << ' ' << x->CBT.size() << ":\n";
-    for (auto it : x->rules_l) {
-        std::set<size_t> s;
-        for (size_t j = 0; j < it.second.size(); j++)
-            s.insert(it.second[j].second);
-        std::cout << it.first << ' ' << s.size() << "\n";
-    }
+//    std::cout << x->l << ' ' << x->r << ' ' << x->CBT.size() << ":\n";
+//    for (auto it : x->rules_l) {
+//        std::set<size_t> s;
+//        for (size_t j = 0; j < it.second.size(); j++)
+//            s.insert(it.second[j].second);
+//        std::cout << it.first << ' ' << s.size() << "\n";
+//    }
 
     if (x->is_leaf) {
         x->CBT.assign(x->CBT.size(), {-INF, 0});
@@ -291,11 +310,56 @@ auto poor_calculate(pMatrix *x, long long &comps, long long &adds, size_t b) {
             comps++;
         }
     }
+    x->calculated[b] = true;
     return x->CBT[b];
 }
 
-unsigned long long
-decode2(pMatrix *x, const std::vector<double> &data, long long &comps, long long &adds, int b, int dep) {
+size_t decode2(pMatrix *x, const std::vector<double> &data, long long &comps, long long &adds, int b);
+
+void update_r(pMatrix *x, const std::vector<double> &data, long long &comps, long long &adds) {
+    int mid = (x->l + x->r) / 2;
+    std::pair<double, unsigned long long> cur_ans_left = {-INF, 0};
+    size_t coset_ind = 0;
+    auto new_r = decode2(x->sec, data, comps, adds, x->i2++);
+    for (size_t j = 0; j < x->rules_r[new_r].size(); j++) {
+        size_t pere_l = x->rules_r[new_r][j].first;
+        auto t = poor_calculate(x->fir, comps, adds, pere_l);
+        comps++;
+        if (t.first > cur_ans_left.first) {
+            cur_ans_left = t;
+            coset_ind = x->rules_r[new_r][j].second;
+        }
+    }
+    comps--;
+    adds++;
+    if (!x->cosets.count(coset_ind))
+        x->q.insert({cur_ans_left.first + x->sec->CBT[new_r].first,
+                     cur_ans_left.second + (x->sec->CBT[new_r].second << (mid - x->l)), coset_ind});
+}
+
+void update_l(pMatrix *x, const std::vector<double> &data, long long &comps, long long &adds) {
+    int mid = (x->l + x->r) / 2;
+    std::pair<double, unsigned long long> cur_ans_right = {-INF, 0};
+    size_t coset_ind = 0;
+    auto new_l = decode2(x->fir, data, comps, adds, x->i1++);
+    for (size_t j = 0; j < x->rules_l[new_l].size(); j++) {
+        size_t pere_r = x->rules_l[new_l][j].first;
+        auto t = poor_calculate(x->sec, comps, adds, pere_r);
+        comps++;
+        if (t.first > cur_ans_right.first) {
+            cur_ans_right = t;
+            coset_ind = x->rules_l[new_l][j].second;
+        }
+    }
+    comps--;
+    adds++;
+    if (!x->cosets.count(coset_ind))
+        x->q.insert({x->fir->CBT[new_l].first + cur_ans_right.first,
+                     x->fir->CBT[new_l].second + (cur_ans_right.second << (mid - x->l)), coset_ind});
+}
+
+size_t
+decode2(pMatrix *x, const std::vector<double> &data, long long &comps, long long &adds, int b) {
     if (x->is_leaf) {
         x->CBT.assign(x->CBT.size(), {-INF, 0});
         if (x->r - x->l == 1) {
@@ -307,31 +371,44 @@ decode2(pMatrix *x, const std::vector<double> &data, long long &comps, long long
                 x->CBT[x->rules[1 ^ curs].val] = {-value, 1 ^ curs};
             }
             for (size_t i = 0; i < x->CBT.size(); i++) {
-                x->q.insert({-x->CBT[i].first, i});
+                x->q.insert({x->CBT[i].first, x->CBT[i].second, i});
             }
-            for (auto it : x->q)
-                x->indexes.push_back(it.second);
+            for (auto it : x->q) {
+                x->indexes.push_back(it.ind);
+                x->calculated[it.ind] = true;
+            }
             return x->indexes[b];
         }
         Gray(x, data, comps, adds, true);
         return x->indexes[b];
     } else {
         int mid = (x->l + x->r) / 2;
-        std::pair<double, unsigned long long> cur_ans_left = {-INF, 0};
-        auto new_r = decode2(x->sec, data, comps, adds, x->i2++, dep + 1);
-        for (size_t j = 0; j < x->rules_r[new_r].size(); j++) {
-            size_t pere_l = x->rules_r[new_r][j].first;
-            auto t = poor_calculate(x->fir, comps, adds, pere_l);
+        if (x->i2 == 0) {
+            update_r(x, data, comps, adds);
+        }
+        if (x->i1 == 0) {
+            update_l(x, data, comps, adds);
+        }
+        size_t i = 0;
+        while (true) {
+            if (i % 2 == 0)
+                update_l(x, data, comps, adds);
+            else
+                update_r(x, data, comps, adds);
+            i++;
+            if (x->q.empty())
+                continue;
             comps++;
-            if (t.first > cur_ans_left.first) {
-                cur_ans_left = t;
+            adds++;
+            if (x->q.begin()->prob >= x->fir->CBT[x->fir->indexes[x->i1 - 1]].first + x->sec->CBT[x->sec->indexes[x->i2 - 1]].first) {
+                x->indexes.push_back(x->q.begin()->ind);
+                x->cosets.insert(x->indexes.back());
+                x->CBT[x->indexes.back()] = {x->q.begin()->prob, x->q.begin()->word};
+                x->calculated[x->indexes.back()] = true;
+                x->q.clear();
+                return x->indexes.back();
             }
         }
-        comps--;
-        adds++;
-        x->q.insert({-(cur_ans_left.first + x->sec->CBT[new_r].first),
-                     cur_ans_left.second + (x->sec->CBT[new_r].second << (mid - x->l))});
-        auto new_l = decode2(x->fir, data, comps)
     }
 }
 
@@ -348,7 +425,8 @@ void check(int r, int m) {
     std::cout << "RM(" << r << ", " << m << ") created\n";
     std::cout << ptr->difficult << "\n";
     long long comps = 0, adds = 0;
-    for (double Eb_N0_dB = 0.0; Eb_N0_dB <= 6.0; Eb_N0_dB += 1.) {
+    long long comps2 = 0, adds2 = 0;
+    for (double Eb_N0_dB = 4.0; Eb_N0_dB <= 6.0; Eb_N0_dB += 1.) {
         int cnt = 0;
         double sigma_square = 0.5 * ((double) t.m / t.n) * ((double) pow(10.0, -Eb_N0_dB / 10));
         std::normal_distribution<> d{0, sqrt(sigma_square)};
@@ -361,7 +439,8 @@ void check(int r, int m) {
                 noise.push_back(d(gen));
             auto x = add_noise(coded, noise);
             std::vector<bool> recieve(coded.size(), false);
-            auto ans = decode(ptr, x, comps, adds);
+//            auto ans = decode(ptr, x, comps, adds);
+            auto ans = ptr->CBT[decode2(ptr, x, comps, adds, 0)].second;
             to_vector(ans, recieve);
             auto decoded = get_message(t, recieve);
             cnt += cmp(decoded, word);
@@ -378,9 +457,9 @@ void check(int r, int m) {
 int main() {
     srand(time(NULL));
 //    check(1, 3);
-//    check(2, 5);
+    check(2, 5);
 //    check(2, 6);
-    check(3, 6);
+//    check(3, 6);
 //    check(4, 6);
     return 0;
 }
