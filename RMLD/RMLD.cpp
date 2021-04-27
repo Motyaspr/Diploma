@@ -143,12 +143,19 @@ void prepare(pMatrix *x, const matrix &generator, bool f) {
     x->combCBT(generator, mid);
     unsigned long long total =
             x->fir->difficult + x->sec->difficult + ((2ull << (x->third_sz + x->fourth_sz)) - (1ull << (x->fourth_sz)));
-    if (total < x->difficult) {
-        x->difficult = total;
+    if (f) {
+        if (len <= 4) {
+            x->is_leaf = true;
+            return;
+        }
     } else {
-        x->is_leaf = true;
-        delete x->fir;
-        delete x->sec;
+        if (total < x->difficult) {
+            x->difficult = total;
+        } else {
+            x->is_leaf = true;
+            delete x->fir;
+            delete x->sec;
+        }
     }
 }
 
@@ -301,6 +308,9 @@ size_t main_decode2(pMatrix *x, const std::vector<double> &data, long long &comp
             }
             if (cnt == 0) {
                 ind_l++;
+                break;
+                if (ind_l == x->fir->CBT.size())
+                    break;
                 continue;
             }
             bool f = false;
@@ -335,6 +345,9 @@ size_t main_decode2(pMatrix *x, const std::vector<double> &data, long long &comp
             }
             if (cnt == 0) {
                 ind_r++;
+                break;
+                if (ind_r == x->sec->CBT.size())
+                    break;
                 continue;
             }
             bool f = false;
@@ -407,7 +420,7 @@ void check(int r, int m, bool f) {
     std::cout << "RM(" << r << ", " << m << ") created\n";
     std::cout << ptr->difficult << "\n";
     long long comps = 0, adds = 0;
-    for (double Eb_N0_dB = 4.0; Eb_N0_dB <= 6.0; Eb_N0_dB += 1.) {
+    for (double Eb_N0_dB = 2.0; Eb_N0_dB <= 6.0; Eb_N0_dB += 1.) {
         int cnt = 0;
         comps = 0;
         adds = 0;
@@ -429,7 +442,8 @@ void check(int r, int m, bool f) {
             cnt += cmp(decoded, word);
         }
         std::cout.precision(7);
-        std::cout << std::fixed << (int) Eb_N0_dB << ' ' << (double) cnt / ITER << " " << (comps + adds) / ITER << "\n";
+        std::cout << std::fixed << (int) Eb_N0_dB << ' ' << (double) cnt / ITER << " " << (comps + adds) / ITER
+                  << "\n";
     }
 //    std::cout << "Count of adds and cmps:" << (comps + adds) / (ITER * 7) << "\n";
 //    std::cout << "Count of adds:" << (adds) / (ITER * 7) << "\n";
