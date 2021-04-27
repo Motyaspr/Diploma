@@ -1,5 +1,6 @@
 #include "common.h"
 #include "reed_muller.h"
+#include <unordered_map>
 
 struct branch {
     long long ind_l, ind_r, val;
@@ -13,9 +14,10 @@ struct pMatrix {
     std::vector<branch> rules;
     unsigned long long difficult;
     std::vector<std::pair<double, unsigned long long>> CBT;
-    std::map<long long, std::vector<std::pair<long long, long long>>> rules_l, rules_r, rules_cos;
+    std::vector<std::vector<std::pair<long long, long long>>> rules_l, rules_r, rules_cos;
     std::vector<bool> used;
     std::vector<size_t> best;
+    std::map<std::pair<size_t, size_t>, double> mp;
 
     pMatrix(int _l, int _r) {
         l = _l;
@@ -108,6 +110,9 @@ struct pMatrix {
         long long masks_count = (1ll << (third_sz + fourth_sz));
         CBT.resize(cosets_count, {-INF, 0});
         used.resize(cosets_count, false);
+        rules_l.resize(fir->CBT.size());
+        rules_r.resize(sec->CBT.size());
+        rules_cos.resize(cosets_count);
         for (size_t i = 0; i < masks_count; i++) {
             long long fir_ind = get_ind(left_system_solutions, i, fir->fourth_sz, true);
             long long sec_ind = get_ind(right_system_solutions, i, sec->fourth_sz, true);
@@ -320,6 +325,7 @@ size_t main_decode2(pMatrix *x, const std::vector<double> &data, long long &comp
                     interested_pair.insert({cos_l, t});
                     max_ind_r = j;
                     f = true;
+//                    std::cout << x->l << ' ' << x->r << ' ' << ind_l << ' ' << max_ind_r << "\n";
                     break;
                 }
             }
@@ -370,9 +376,13 @@ size_t main_decode2(pMatrix *x, const std::vector<double> &data, long long &comp
         std::pair<size_t, size_t> best_pair;
         assert(interested_pair.size() != 0);
         for (auto it : interested_pair) {
-            adds++;
+            if (x->mp[{it.first, it.second}] == 0.0) {
+                x->mp[{it.first, it.second}] = x->fir->CBT[it.first].first + x->sec->CBT[it.second].first;
+                adds++;
+            }
             comps++;
-            if (x->fir->CBT[it.first].first + x->sec->CBT[it.second].first > mx) {
+
+            if (x->mp[{it.first, it.second}] > mx) {
                 mx = x->fir->CBT[it.first].first + x->sec->CBT[it.second].first;
                 best_pair = it;
             }
@@ -396,6 +406,7 @@ void clear_structures(pMatrix *x) {
     x->best.clear();
     std::fill(x->used.begin(), x->used.end(), false);
     std::fill(x->CBT.begin(), x->CBT.end(), std::make_pair(-INF, 0));
+    x->mp.clear();
     if (x->is_leaf)
         return;
     clear_structures(x->fir);
