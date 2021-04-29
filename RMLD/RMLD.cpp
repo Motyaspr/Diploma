@@ -18,6 +18,7 @@ struct pMatrix {
     std::vector<bool> used;
     std::vector<size_t> best;
     std::map<std::pair<size_t, size_t>, double> mp;
+    std::map<std::pair<std::pair<size_t, size_t>, std::pair<size_t, size_t>>, char> comparat;
 
     pMatrix(int _l, int _r) {
         l = _l;
@@ -177,6 +178,7 @@ void run(pMatrix *x, const matrix &generator) {
     x->combCBT(generator, mid);
 //    x->printMt();
     x->merge();
+    std::cout << x->l << ' ' << x->r << "\n";
 }
 
 
@@ -375,19 +377,28 @@ size_t main_decode2(pMatrix *x, const std::vector<double> &data, long long &comp
         double mx = 0;
         std::pair<size_t, size_t> best_pair;
         assert(interested_pair.size() != 0);
+        size_t i = 0;
         for (auto it : interested_pair) {
-            if (x->mp[{it.first, it.second}] == 0.0) {
-                x->mp[{it.first, it.second}] = x->fir->CBT[it.first].first + x->sec->CBT[it.second].first;
+            if (x->mp[it] == 0.0) {
+                x->mp[it] = x->fir->CBT[it.first].first + x->sec->CBT[it.second].first;
                 adds++;
             }
-            comps++;
-
-            if (x->mp[{it.first, it.second}] > mx) {
+            i++;
+            if (i == 1) {
+                best_pair = it;
+                mx = x->mp[it];
+                continue;
+            }
+            if (x->comparat[{best_pair, it}] == 0) {
+                comps++;
+                x->comparat[{best_pair, it}] = 1;
+                x->comparat[{it, best_pair}] = 1;
+            }
+            if (x->mp[it] > mx) {
                 mx = x->fir->CBT[it.first].first + x->sec->CBT[it.second].first;
                 best_pair = it;
             }
         }
-        comps--;
         size_t ans = 0;
         for (size_t i = 0; i < x->rules_l[best_pair.first].size(); i++)
             if (x->rules_l[best_pair.first][i].first == best_pair.second) {
@@ -407,6 +418,7 @@ void clear_structures(pMatrix *x) {
     std::fill(x->used.begin(), x->used.end(), false);
     std::fill(x->CBT.begin(), x->CBT.end(), std::make_pair(-INF, 0));
     x->mp.clear();
+    x->comparat.clear();
     if (x->is_leaf)
         return;
     clear_structures(x->fir);
