@@ -4,6 +4,16 @@
 
 struct branch {
     long long ind_l, ind_r, val;
+
+    bool operator==(branch const &a) const {
+        return a.ind_l == ind_l && a.ind_r == ind_r && a.val == val;
+    }
+
+    branch(long long _ind_l, long long _ind_r, long long _val) {
+        ind_l = _ind_l;
+        ind_r = _ind_r;
+        val = _val;
+    }
 };
 
 struct pMatrix {
@@ -18,7 +28,7 @@ struct pMatrix {
     std::vector<bool> used;
     std::vector<size_t> best;
     std::map<std::pair<size_t, size_t>, double> mp;
-    std::map<std::pair<std::pair<size_t, size_t>, std::pair<size_t, size_t>>, char> comparat;
+    std::vector<branch> interested_pairs;
 
     pMatrix(int _l, int _r) {
         l = _l;
@@ -114,11 +124,12 @@ struct pMatrix {
         rules_l.resize(fir->CBT.size());
         rules_r.resize(sec->CBT.size());
         rules_cos.resize(cosets_count);
+        std::cout << "masks_count: " << masks_count << "cosets_count: " << cosets_count << "\n";
         for (size_t i = 0; i < masks_count; i++) {
             long long fir_ind = get_ind(left_system_solutions, i, fir->fourth_sz, true);
             long long sec_ind = get_ind(right_system_solutions, i, sec->fourth_sz, true);
             long long rule = i % cosets_count;
-            rules.push_back({fir_ind, sec_ind, rule});
+            rules.emplace_back(fir_ind, sec_ind, rule);
             rules_l[fir_ind].push_back({sec_ind, rule});
             rules_r[sec_ind].push_back({fir_ind, rule});
             rules_cos[rule].push_back({fir_ind, sec_ind});
@@ -150,7 +161,7 @@ void prepare(pMatrix *x, const matrix &generator, bool f) {
     unsigned long long total =
             x->fir->difficult + x->sec->difficult + ((2ull << (x->third_sz + x->fourth_sz)) - (1ull << (x->fourth_sz)));
     if (f) {
-        if (len <= 4) {
+        if (len <= 2) {
             x->is_leaf = true;
             return;
         }
@@ -277,6 +288,41 @@ unsigned long long decode(pMatrix *x, const std::vector<double> &data, long long
     return x->CBT[0].second;
 }
 
+size_t log2(size_t x) {
+    if (x <= 2)
+        return 1;
+    size_t cnt = 1;
+    while (x >= 2) {
+        x /= 2;
+        cnt++;
+    }
+    return cnt;
+}
+
+void insert_to_vector(pMatrix *x, branch t, long long &comps, long long &adds) {
+    for (size_t i = 0; i < x->interested_pairs.size(); i++)
+        if (x->interested_pairs[i] == t)
+            return;
+    if (x->mp[{t.ind_l, t.ind_r}] == 0) {
+        adds++;
+        x->mp[{t.ind_l, t.ind_r}] = x->fir->CBT[t.ind_l].first + x->sec->CBT[t.ind_r].first;
+    }
+    double value = x->mp[{t.ind_l, t.ind_r}];
+    if (x->interested_pairs.size() == 0) {
+        x->interested_pairs.push_back(t);
+        return;
+    }
+    comps += log2(x->interested_pairs.size());
+    size_t ind = x->interested_pairs.size();
+    for (size_t i = 0; i < x->interested_pairs.size(); i++) {
+        if (value > x->mp[{x->interested_pairs[i].ind_l, x->interested_pairs[i].ind_r}]) {
+            ind = i;
+            break;
+        }
+    }
+    x->interested_pairs.insert(x->interested_pairs.begin() + ind, t);
+}
+
 size_t main_decode2(pMatrix *x, const std::vector<double> &data, long long &comps, long long &adds, size_t b) {
     if (x->best.size() > b)
         return x->best[b];
@@ -300,22 +346,20 @@ size_t main_decode2(pMatrix *x, const std::vector<double> &data, long long &comp
         int mid = (x->l + x->r) / 2;
         size_t max_ind_r = x->sec->CBT.size();
         size_t ind_l = 0;
-        std::set<std::pair<size_t, size_t>> interested_pair;
-        std::vector<bool> unused_right(x->sec->CBT.size(), false);
+        std::vector<long long> unused_right(x->sec->CBT.size());
         while (max_ind_r != 0) {
             size_t cnt = 0;
-            std::fill(unused_right.begin(), unused_right.end(), false);
+            std::fill(unused_right.begin(), unused_right.end(), -1);
             size_t cos_l = main_decode2(x->fir, data, comps, adds, ind_l);
             auto rules_l = x->rules_l[cos_l];
             for (auto &i : rules_l) {
                 if (!x->used[i.second]) {
-                    unused_right[i.first] = true;
+                    unused_right[i.first] = i.second;
                     cnt++;
                 }
             }
             if (cnt == 0) {
                 ind_l++;
-                break;
                 if (ind_l == x->fir->CBT.size())
                     break;
                 continue;
@@ -323,8 +367,8 @@ size_t main_decode2(pMatrix *x, const std::vector<double> &data, long long &comp
             bool f = false;
             for (size_t j = 0; j < max_ind_r; j++) {
                 auto t = main_decode2(x->sec, data, comps, adds, j);
-                if (unused_right[t]) {
-                    interested_pair.insert({cos_l, t});
+                if (unused_right[t] != -1) {
+                    insert_to_vector(x, branch(cos_l, t, unused_right[t]), comps, adds);
                     max_ind_r = j;
                     f = true;
 //                    std::cout << x->l << ' ' << x->r << ' ' << ind_l << ' ' << max_ind_r << "\n";
@@ -339,21 +383,20 @@ size_t main_decode2(pMatrix *x, const std::vector<double> &data, long long &comp
         }
         size_t max_ind_l = x->fir->CBT.size();
         size_t ind_r = 0;
-        std::vector<bool> unused_left(x->fir->CBT.size(), false);
+        std::vector<long long> unused_left(x->fir->CBT.size(), -1);
         while (max_ind_l != 0) {
             int cnt = 0;
             size_t cos_r = main_decode2(x->sec, data, comps, adds, ind_r);
-            std::fill(unused_left.begin(), unused_left.end(), false);
+            std::fill(unused_left.begin(), unused_left.end(), -1);
             auto rules_r = x->rules_r[cos_r];
             for (auto &i : rules_r) {
                 if (!x->used[i.second]) {
-                    unused_left[i.first] = true;
+                    unused_left[i.first] = i.second;
                     cnt++;
                 }
             }
             if (cnt == 0) {
                 ind_r++;
-                break;
                 if (ind_r == x->sec->CBT.size())
                     break;
                 continue;
@@ -361,8 +404,8 @@ size_t main_decode2(pMatrix *x, const std::vector<double> &data, long long &comp
             bool f = false;
             for (size_t j = 0; j < max_ind_l; j++) {
                 auto t = main_decode2(x->fir, data, comps, adds, j);
-                if (unused_left[t]) {
-                    interested_pair.insert({t, cos_r});
+                if (unused_left[t] != -1) {
+                    insert_to_vector(x, branch(t, cos_r, unused_left[t]), comps, adds);
                     max_ind_l = j;
                     f = true;
                     break;
@@ -374,41 +417,24 @@ size_t main_decode2(pMatrix *x, const std::vector<double> &data, long long &comp
             if (!f)
                 break;
         }
-        double mx = 0;
-        std::pair<size_t, size_t> best_pair;
-        assert(interested_pair.size() != 0);
-        size_t i = 0;
-        for (auto it : interested_pair) {
-            if (x->mp[it] == 0.0) {
-                x->mp[it] = x->fir->CBT[it.first].first + x->sec->CBT[it.second].first;
-                adds++;
-            }
-            i++;
-            if (i == 1) {
-                best_pair = it;
-                mx = x->mp[it];
-                continue;
-            }
-            if (x->comparat[{best_pair, it}] == 0) {
-                comps++;
-                x->comparat[{best_pair, it}] = 1;
-                x->comparat[{it, best_pair}] = 1;
-            }
-            if (x->mp[it] > mx) {
-                mx = x->fir->CBT[it.first].first + x->sec->CBT[it.second].first;
-                best_pair = it;
-            }
-        }
-        size_t ans = 0;
-        for (size_t i = 0; i < x->rules_l[best_pair.first].size(); i++)
-            if (x->rules_l[best_pair.first][i].first == best_pair.second) {
-                ans = x->rules_l[best_pair.first][i].second;
-                x->used[ans] = true;
-                x->best.push_back(ans);
-                x->CBT[ans] = {mx, x->fir->CBT[best_pair.first].second +
-                                   (x->sec->CBT[best_pair.second].second << (mid - x->l))};
-                break;
-            }
+        //assert(x->interested_pairs.size() != 0);
+        double mx = x->mp[{x->interested_pairs[0].ind_l, x->interested_pairs[0].ind_r}];
+        std::pair<size_t, size_t> best_pair = {x->interested_pairs[0].ind_l, x->interested_pairs[0].ind_r};
+        size_t ans = x->interested_pairs[0].val;
+        x->used[ans] = true;
+        x->best.push_back(ans);
+        x->CBT[ans] = {mx, x->fir->CBT[best_pair.first].second +
+                           (x->sec->CBT[best_pair.second].second << (mid - x->l))};
+        x->interested_pairs.erase(x->interested_pairs.begin());
+        std::vector<branch> tmp;
+        size_t need = 0;
+        for (auto interested_pair : x->interested_pairs)
+            if (interested_pair.val != ans) {
+                tmp.push_back(interested_pair);
+            } else
+                need = 1;
+        if (need)
+            x->interested_pairs = tmp;
         return ans;
     }
 }
@@ -418,7 +444,7 @@ void clear_structures(pMatrix *x) {
     std::fill(x->used.begin(), x->used.end(), false);
     std::fill(x->CBT.begin(), x->CBT.end(), std::make_pair(-INF, 0));
     x->mp.clear();
-    x->comparat.clear();
+    x->interested_pairs.clear();
     if (x->is_leaf)
         return;
     clear_structures(x->fir);
@@ -443,7 +469,7 @@ void check(int r, int m, bool f) {
     std::cout << "RM(" << r << ", " << m << ") created\n";
     std::cout << ptr->difficult << "\n";
     long long comps = 0, adds = 0;
-    for (double Eb_N0_dB = 2.0; Eb_N0_dB <= 6.0; Eb_N0_dB += 1.) {
+    for (double Eb_N0_dB = 4.0; Eb_N0_dB <= 6.0; Eb_N0_dB += 1.) {
         int cnt = 0;
         comps = 0;
         adds = 0;
