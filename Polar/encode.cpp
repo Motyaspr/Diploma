@@ -1,5 +1,6 @@
 #include "TalVardyListDecoder.h"
 #include "polar_encoder.h"
+#include "common.h"
 
 
 int main() {
@@ -10,17 +11,18 @@ int main() {
 
     std::random_device rd{};
     std::mt19937 gen{rd()};
-    for (size_t l = 16; l <= 16; l *= 2) {
+    PolarEncoder t(N, K);
+    for (size_t l = 1; l <= 2; l *= 2) {
         std::cout << "Polar Code(" << N << ", " << K << ", " << l << ")\n";
-        for (double Eb_N0_dB = 2.5; Eb_N0_dB <= 3.0; Eb_N0_dB += 0.5) {
+        for (double Eb_N0_dB = 0.0; Eb_N0_dB <= 4.0; Eb_N0_dB += 0.5) {
             double sigma_square = 0.5 * ((double) N / K) * ((double) pow(10.0, -Eb_N0_dB / 10));
             std::normal_distribution<> d{0, sqrt(sigma_square)};
-            PolarEncoder t(N, K, sqrt(sigma_square));
+            t.reuse_frozen(sqrt(sigma_square));
             int cnt = 0;
             TalVardyListDecoder decoder(log_N, K, l, sqrt(sigma_square), t.frozen);
             for (size_t i = 0; i < ITER; i++) {
                 std::vector<bool> word = gen_rand_vect(N);
-                std::vector<bool> coded = t.encode(word);
+                std::vector<bool> coded = t.encode(word, true);
                 std::vector<double> noise;
                 noise.reserve(coded.size());
                 for (size_t j = 0; j < coded.size(); j++)

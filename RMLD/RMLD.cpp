@@ -1,6 +1,7 @@
 #include "common.h"
 #include "reed_muller.h"
 #include <unordered_map>
+#include "polar_encoder.h"
 
 struct branch {
     long long ind_l, ind_r, val;
@@ -59,7 +60,8 @@ struct pMatrix {
         x.reserve(t.size());
         for (auto &i : t)
             x.emplace_back(std::move(i.second));
-        mt = std::move(prepare_matrix(x, fourth_sz));
+
+        mt = prepare_matrix(x, fourth_sz);
     }
 
     void makeCBT(const matrix &generator) {
@@ -70,8 +72,17 @@ struct pMatrix {
         if (r - l == 1) {
             rules.resize(2, {-1, -1, 0});
             CBT.resize(2);
-            if (mt[0][0] == 1)
+            if (mt.size() == 1)
                 rules[1] = {-1, -1, 1};
+            return;
+        }
+        if (mt.size() == 0) {
+            CBT.resize(1);
+            used.resize(1);
+            rules.resize(1ll << (r - l), {-1, -1, -1});
+            for (size_t i = 0; i < rules.size(); i++) {
+                rules[i] = {-1, -1, 0};
+            }
             return;
         }
         long long cosets_count = (1ll << (fourth_sz));
@@ -103,8 +114,10 @@ struct pMatrix {
         for (auto &i : right)
             i.push_back(false);
         std::vector<bool> ans_l, ans_r;
-        ans_l.resize(left[0].size() - 1);
-        ans_r.resize(right[0].size() - 1);
+        if (!left.empty())
+            ans_l.resize(left[0].size() - 1);
+        if (right.size() != 0)
+            ans_r.resize(right[0].size() - 1);
         std::vector<std::vector<bool>> left_system_solutions, right_system_solutions;
         for (size_t i = mt.size() - third_sz - fourth_sz; i < mt.size(); i++) {
             int ind = 0;
@@ -124,8 +137,9 @@ struct pMatrix {
         rules_l.resize(fir->CBT.size());
         rules_r.resize(sec->CBT.size());
         rules_cos.resize(cosets_count);
-        std::cout << "masks_count: " << masks_count << "cosets_count: " << cosets_count << "\n";
+//        std::cout << "masks_count: " << masks_count << "cosets_count: " << cosets_count << "\n";
         for (size_t i = 0; i < masks_count; i++) {
+
             long long fir_ind = get_ind(left_system_solutions, i, fir->fourth_sz, true);
             long long sec_ind = get_ind(right_system_solutions, i, sec->fourth_sz, true);
             long long rule = i % cosets_count;
@@ -136,11 +150,26 @@ struct pMatrix {
         }
     }
 
+
 };
+
+void deletePtr(pMatrix *x) {
+    if (x->is_leaf)
+        delete x;
+    else {
+        deletePtr(x->fir);
+        deletePtr(x->sec);
+        delete x;
+    }
+}
 
 void prepare(pMatrix *x, const matrix &generator, bool f) {
     x->difficult = std::numeric_limits<unsigned long long>::max();
     x->combCBT(generator, -1);
+    if (x->mt.size() == 0) {
+        x->is_leaf = true;
+        return;
+    }
     int len = x->r - x->l;
     if (len < 50) {
         long long adds = (len - 1) + (1ll << (len - 1)) - 1;
@@ -149,7 +178,7 @@ void prepare(pMatrix *x, const matrix &generator, bool f) {
     }
 
     int mid = (x->l + x->r) / 2;
-    if (len == 1) {
+    if (len == 2) {
         x->is_leaf = true;
         return;
     }
@@ -163,6 +192,8 @@ void prepare(pMatrix *x, const matrix &generator, bool f) {
     if (f) {
         if (len <= 2) {
             x->is_leaf = true;
+            deletePtr(x->fir);
+            deletePtr(x->sec);
             return;
         }
     } else {
@@ -189,7 +220,7 @@ void run(pMatrix *x, const matrix &generator) {
     x->combCBT(generator, mid);
 //    x->printMt();
     x->merge();
-    std::cout << x->l << ' ' << x->r << "\n";
+//    std::cout << x->l << ' ' << x->r << "\n";
 }
 
 
@@ -256,7 +287,7 @@ unsigned long long decode(pMatrix *x, const std::vector<double> &data, long long
             double value = (data[x->l] > 0) ? data[x->l] : -data[x->l];
             x->CBT.assign(x->CBT.size(), {-100, 0});
             x->CBT[x->rules[curs].val] = {value, curs};
-            if (x->mt[0][0]) {
+            if (x->mt.size() == 1) {
                 x->CBT[x->rules[1 ^ curs].val] = {-value, 1 ^ curs};
             }
             return 0;
@@ -469,7 +500,7 @@ void check(int r, int m, bool f) {
     std::cout << "RM(" << r << ", " << m << ") created\n";
     std::cout << ptr->difficult << "\n";
     long long comps = 0, adds = 0;
-    for (double Eb_N0_dB = 4.0; Eb_N0_dB <= 6.0; Eb_N0_dB += 1.) {
+    for (double Eb_N0_dB = 0.0; Eb_N0_dB <= 6.0; Eb_N0_dB += 1.) {
         int cnt = 0;
         comps = 0;
         adds = 0;
@@ -500,13 +531,70 @@ void check(int r, int m, bool f) {
     delete ptr;
 }
 
+void check_polar(size_t n, size_t k, bool f) {
+    std::random_device rd{};
+    std::mt19937 gen{rd()};
+    long long comps = 0, adds = 0;
+    PolarEncoder q = PolarEncoder(n, k);
+    for (double Eb_N0_dB = 0.0; Eb_N0_dB <= 6.0; Eb_N0_dB += 1.) {
+        double sigma_square = 0.5 * ((double) n / k) * ((double) pow(10.0, -Eb_N0_dB / 10));
+        std::normal_distribution<> d{0, sqrt(sigma_square)};
+        q.reuse_frozen(sqrt(sigma_square));
+        for (size_t i = 0; i < q.frozen.size(); i++)
+            if (q.frozen[i])
+                std::cout << i << ' ';
+        std::cout << "\n";
+        auto v = q.getRealGenMatrix();
+        matrix t(v);
+        auto *ptr = new pMatrix(0, t.m);
+        t.to_span();
+        prepare(ptr, t, f);
+        run(ptr, t);
+        std::cout << ptr->difficult << "\n";
+        int cnt = 0;
+        comps = 0;
+        adds = 0;
+        for (size_t i = 0; i < ITER; i++) {
+            std::vector<bool> word = gen_rand_vect(t.n);
+            std::vector<bool> coded = mulVectorMatrix(word, v);
+//            std::vector<bool> new_coded = mulVectorMatrix(word, v);
+            for (size_t i = 0; i < coded.size(); i++)
+                std::cout << coded[i] << ' ';
+            std::cout << "\n";
+
+            std::vector<double> noise;
+            noise.reserve(coded.size());
+            for (size_t j = 0; j < coded.size(); j++)
+                noise.push_back(d(gen));
+            auto x = add_noise(coded, noise);
+            std::vector<bool> recieve(coded.size(), false);
+
+            auto ans = (f) ? decode2(ptr, x, comps, adds) : decode(ptr, x, comps, adds);
+            to_vector(ans, recieve);
+            for (size_t i = 0; i < recieve.size(); i++)
+                std::cout << recieve[i] << ' ';
+            std::cout << "\n";
+            cnt += cmp(recieve, coded);
+        }
+        std::cout.precision(7);
+        std::cout << std::fixed << (int) Eb_N0_dB << ' ' << (double) cnt / ITER << " " << (comps + adds) / ITER
+                  << "\n";
+//        deletePtr(ptr);
+    }
+//    std::cout << "Count of adds and cmps:" << (comps + adds) / (ITER * 7) << "\n";
+//    std::cout << "Count of adds:" << (adds) / (ITER * 7) << "\n";
+//    std::cout << "Count of cmps:" << (comps) / (ITER * 7) << "\n";
+
+}
+
 int main() {
     srand(time(NULL));
-//    check(1, 3);
-//    check(2, 5);
-//    check(2, 6);
-    check(3, 6, true);
-//    check(4, 6);
+//    check(1, 3, false);
+//    check(2, 5, false);
+//    check(2, 6, false);
+//    check(3, 6, true);
+//    check(4, 6, false);
+    check_polar(16, 8, false);
     return 0;
 }
 
