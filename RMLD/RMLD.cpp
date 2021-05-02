@@ -137,8 +137,8 @@ struct pMatrix {
         rules_l.resize(fir->CBT.size());
         rules_r.resize(sec->CBT.size());
         rules_cos.resize(cosets_count);
-        std::cout << "l=" << l << ' ' << "r=" << r << "\n";
-        std::cout << "masks_count: " << masks_count << "cosets_count: " << cosets_count << "\n";
+//        std::cout << "l=" << l << ' ' << "r=" << r << "\n";
+//        std::cout << "masks_count: " << masks_count << "cosets_count: " << cosets_count << "\n";
         for (size_t i = 0; i < masks_count; i++) {
 
             long long fir_ind = get_ind(left_system_solutions, i, fir->fourth_sz, true);
@@ -213,7 +213,7 @@ void prepare(pMatrix *x, const matrix &generator, bool f) {
 }
 
 void run(pMatrix *x, const matrix &generator) {
-    std::cout << x->l << ' ' << x->r << "\n";
+//    std::cout << x->l << ' ' << x->r << "\n";
     if (x->is_leaf) {
         x->makeCBT(generator);
         x->prepareLengthOneOrMore();
@@ -291,13 +291,13 @@ void Gray(pMatrix *x, const std::vector<double> &data, long long &comps, long lo
 }
 
 std::vector<bool> decode(pMatrix *x, const std::vector<double> &data, long long &comps, long long &adds) {
+    x->CBT.assign(x->CBT.size(), {-INF, std::vector<bool>()});
     if (x->is_leaf) {
         x->CBT.assign(x->CBT.size(), {-INF, std::vector<bool>()});
         std::vector<bool> to_push(x->r - x->l, false);
         if (x->r - x->l == 1) {
             int curs = (data[x->l] > 0) ? 1 : 0;
             double value = (data[x->l] > 0) ? data[x->l] : -data[x->l];
-            x->CBT.assign(x->CBT.size(), {-INF, std::vector<bool>()});
             to_vector(curs, to_push);
             x->CBT[x->rules[curs].val] = {value, to_push};
             std::fill(to_push.begin(), to_push.end(), false);
@@ -545,7 +545,7 @@ void check_polar(size_t n, size_t k, bool f) {
     std::mt19937 gen{rd()};
     long long comps = 0, adds = 0;
     PolarEncoder q = PolarEncoder(n, k);
-    for (double Eb_N0_dB = 3.0; Eb_N0_dB <= 5.0; Eb_N0_dB += 1.) {
+    for (double Eb_N0_dB = 0.0; Eb_N0_dB <= 5.0; Eb_N0_dB += 1.) {
         double sigma_square = 0.5 * ((double) n / k) * ((double) pow(10.0, -Eb_N0_dB / 10));
         std::normal_distribution<> d{0, sqrt(sigma_square)};
         q.reuse_frozen(sqrt(sigma_square));
@@ -562,7 +562,6 @@ void check_polar(size_t n, size_t k, bool f) {
         comps = 0;
         adds = 0;
         for (size_t i = 0; i < ITER; i++) {
-            std::cout << i << ":\n";
             std::vector<bool> word = gen_rand_vect(t.n);
             std::vector<bool> coded = mulVectorMatrix(word, v);
 //            std::vector<bool> new_coded = mulVectorMatrix(word, v);
