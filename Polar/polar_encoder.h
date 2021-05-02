@@ -44,6 +44,7 @@ struct PolarEncoder {
         create_A();
         auto mat = createB(n);
         g = mul_matrixes(mat, A);
+        assert(mul_matrixes(mat, A) == mul_matrixes(A, mat));
 
     }
 
@@ -72,7 +73,7 @@ struct PolarEncoder {
     std::vector<std::vector<bool>> getRealGenMatrix() {
         std::vector<std::vector<bool>> ans;
         for (size_t i = 0; i < g.size(); i++) {
-            if (frozen[i])
+            if (!frozen[i])
                 ans.push_back(g[i]);
         }
         return ans;

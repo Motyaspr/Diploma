@@ -24,7 +24,7 @@ struct pMatrix {
     std::vector<std::vector<bool>> mt;
     std::vector<branch> rules;
     unsigned long long difficult;
-    std::vector<std::pair<double, unsigned long long>> CBT;
+    std::vector<std::pair<double, std::vector<bool>>> CBT;
     std::vector<std::vector<std::pair<long long, long long>>> rules_l, rules_r, rules_cos;
     std::vector<bool> used;
     std::vector<size_t> best;
@@ -132,12 +132,13 @@ struct pMatrix {
         }
         long long cosets_count = (1ll << (fourth_sz));
         long long masks_count = (1ll << (third_sz + fourth_sz));
-        CBT.resize(cosets_count, {-INF, 0});
+        CBT.resize(cosets_count, {-INF, std::vector<bool>()});
         used.resize(cosets_count, false);
         rules_l.resize(fir->CBT.size());
         rules_r.resize(sec->CBT.size());
         rules_cos.resize(cosets_count);
-//        std::cout << "masks_count: " << masks_count << "cosets_count: " << cosets_count << "\n";
+        std::cout << "l=" << l << ' ' << "r=" << r << "\n";
+        std::cout << "masks_count: " << masks_count << "cosets_count: " << cosets_count << "\n";
         for (size_t i = 0; i < masks_count; i++) {
 
             long long fir_ind = get_ind(left_system_solutions, i, fir->fourth_sz, true);
@@ -148,6 +149,14 @@ struct pMatrix {
             rules_r[sec_ind].push_back({fir_ind, rule});
             rules_cos[rule].push_back({fir_ind, sec_ind});
         }
+    };
+
+    ~pMatrix() {
+        if (fir != nullptr)
+            delete fir;
+        if (sec != nullptr)
+            delete sec;
+
     }
 
 
@@ -190,10 +199,8 @@ void prepare(pMatrix *x, const matrix &generator, bool f) {
     unsigned long long total =
             x->fir->difficult + x->sec->difficult + ((2ull << (x->third_sz + x->fourth_sz)) - (1ull << (x->fourth_sz)));
     if (f) {
-        if (len <= 2) {
+        if (len <= 8) {
             x->is_leaf = true;
-            deletePtr(x->fir);
-            deletePtr(x->sec);
             return;
         }
     } else {
@@ -201,13 +208,12 @@ void prepare(pMatrix *x, const matrix &generator, bool f) {
             x->difficult = total;
         } else {
             x->is_leaf = true;
-            delete x->fir;
-            delete x->sec;
         }
     }
 }
 
 void run(pMatrix *x, const matrix &generator) {
+    std::cout << x->l << ' ' << x->r << "\n";
     if (x->is_leaf) {
         x->makeCBT(generator);
         x->prepareLengthOneOrMore();
@@ -230,10 +236,11 @@ void Gray(pMatrix *x, const std::vector<double> &data, long long &comps, long lo
         total_sum -= data[i];
         adds++;
     }
-    long long inverse = x->rules.size() - 1;
-    long long cur_code = 0;
+    unsigned long long inverse = x->rules.size() - 1;
+    unsigned long long cur_code = 0;
+    std::vector<bool> to_push(x->r - x->l, false);
     for (size_t i = 0; i < x->rules.size() / 2; i++) {
-        long long cur = cur_code;
+        unsigned long long cur = cur_code;
         double cur_sum = total_sum;
         if (cur_sum < 0) {
             cur ^= inverse;
@@ -243,13 +250,17 @@ void Gray(pMatrix *x, const std::vector<double> &data, long long &comps, long lo
             if (x->CBT[x->rules[cur].val].first != -INF)
                 comps++;
             if (x->rules[cur].val != -1 && x->CBT[x->rules[cur].val].first < total_sum) {
-                x->CBT[x->rules[cur].val] = {cur_sum, cur};
+                to_vector(cur, to_push);
+                x->CBT[x->rules[cur].val] = {cur_sum, to_push};
+                std::fill(to_push.begin(), to_push.end(), false);
             }
             if (x->rules[cur].val != x->rules[cur ^ inverse].val) {
                 if (x->CBT[x->rules[cur ^ inverse].val].first != -INF)
                     comps++;
                 if (x->CBT[x->rules[cur ^ inverse].val].first < -cur_sum) {
-                    x->CBT[x->rules[cur ^ inverse].val] = {-cur_sum, cur ^ inverse};
+                    to_vector((cur ^ inverse), to_push);
+                    x->CBT[x->rules[cur ^ inverse].val] = {-cur_sum, to_push};
+                    std::fill(to_push.begin(), to_push.end(), false);
                 }
             }
         }
@@ -279,40 +290,37 @@ void Gray(pMatrix *x, const std::vector<double> &data, long long &comps, long lo
 
 }
 
-unsigned long long decode(pMatrix *x, const std::vector<double> &data, long long &comps, long long &adds) {
+std::vector<bool> decode(pMatrix *x, const std::vector<double> &data, long long &comps, long long &adds) {
     if (x->is_leaf) {
-        x->CBT.assign(x->CBT.size(), {-INF, 0});
+        x->CBT.assign(x->CBT.size(), {-INF, std::vector<bool>()});
+        std::vector<bool> to_push(x->r - x->l, false);
         if (x->r - x->l == 1) {
             int curs = (data[x->l] > 0) ? 1 : 0;
             double value = (data[x->l] > 0) ? data[x->l] : -data[x->l];
-            x->CBT.assign(x->CBT.size(), {-100, 0});
-            x->CBT[x->rules[curs].val] = {value, curs};
+            x->CBT.assign(x->CBT.size(), {-INF, std::vector<bool>()});
+            to_vector(curs, to_push);
+            x->CBT[x->rules[curs].val] = {value, to_push};
+            std::fill(to_push.begin(), to_push.end(), false);
             if (x->mt.size() == 1) {
-                x->CBT[x->rules[1 ^ curs].val] = {-value, 1 ^ curs};
+                to_vector(curs ^ 1, to_push);
+                x->CBT[x->rules[1 ^ curs].val] = {-value, to_push};
             }
-            return 0;
+            return {};
         }
         Gray(x, data, comps, adds, false);
     } else {
-        int mid = (x->l + x->r) / 2;
         decode(x->fir, data, comps, adds);
         decode(x->sec, data, comps, adds);
         for (size_t i = 0; i < x->rules.size(); i++) {
             auto &ind = x->rules[i];
             double sum = x->fir->CBT[ind.ind_l].first + x->sec->CBT[ind.ind_r].first;
             adds++;
-            if (i < x->CBT.size()) {
-                x->CBT[ind.val] = {sum,
-                                   x->fir->CBT[ind.ind_l].second +
-                                   ((x->sec->CBT[ind.ind_r].second) << (mid - x->l))};
-
-            } else {
+            if (i >= x->CBT.size())
                 comps++;
-                if (x->CBT[ind.val].first < sum) {
-                    x->CBT[ind.val] = {sum,
-                                       x->fir->CBT[ind.ind_l].second +
-                                       ((x->sec->CBT[ind.ind_r].second) << (mid - x->l))};
-                }
+            if (x->CBT[ind.val].first < sum) {
+                x->CBT[ind.val] = {sum,
+                                   concat(x->fir->CBT[ind.ind_l].second,
+                                          x->sec->CBT[ind.ind_r].second)};
             }
         }
     }
@@ -359,14 +367,18 @@ size_t main_decode2(pMatrix *x, const std::vector<double> &data, long long &comp
         return x->best[b];
     if (x->is_leaf) {
         if (x->best.size() == 0) {
-            x->CBT.assign(x->CBT.size(), {-INF, 0});
+            std::vector<bool> to_push(x->r - x->l, false);
+            x->CBT.assign(x->CBT.size(), {-INF, {}});
             if (x->r - x->l == 1) {
                 int curs = (data[x->l] > 0) ? 1 : 0;
                 double value = (data[x->l] > 0) ? data[x->l] : -data[x->l];
-                x->CBT.assign(x->CBT.size(), {-100, 0});
-                x->CBT[x->rules[curs].val] = {value, curs};
+                x->CBT.assign(x->CBT.size(), {-INF, {}});
+                to_vector(curs, to_push);
+                x->CBT[x->rules[curs].val] = {value, to_push};
+                to_push.assign(to_push.size(), false);
                 if (x->mt[0][0]) {
-                    x->CBT[x->rules[1 ^ curs].val] = {-value, 1 ^ curs};
+                    to_vector(1 ^ curs, to_push);
+                    x->CBT[x->rules[1 ^ curs].val] = {-value, to_push};
                 }
                 return 0;
             }
@@ -374,7 +386,7 @@ size_t main_decode2(pMatrix *x, const std::vector<double> &data, long long &comp
         }
         return x->best[b];
     } else {
-        int mid = (x->l + x->r) / 2;
+
         size_t max_ind_r = x->sec->CBT.size();
         size_t ind_l = 0;
         std::vector<long long> unused_right(x->sec->CBT.size());
@@ -454,8 +466,8 @@ size_t main_decode2(pMatrix *x, const std::vector<double> &data, long long &comp
         size_t ans = x->interested_pairs[0].val;
         x->used[ans] = true;
         x->best.push_back(ans);
-        x->CBT[ans] = {mx, x->fir->CBT[best_pair.first].second +
-                           (x->sec->CBT[best_pair.second].second << (mid - x->l))};
+        x->CBT[ans] = {mx, concat(x->fir->CBT[best_pair.first].second,
+                                  x->sec->CBT[best_pair.second].second)};
         x->interested_pairs.erase(x->interested_pairs.begin());
         std::vector<branch> tmp;
         size_t need = 0;
@@ -473,7 +485,7 @@ size_t main_decode2(pMatrix *x, const std::vector<double> &data, long long &comp
 void clear_structures(pMatrix *x) {
     x->best.clear();
     std::fill(x->used.begin(), x->used.end(), false);
-    std::fill(x->CBT.begin(), x->CBT.end(), std::make_pair(-INF, 0));
+    std::fill(x->CBT.begin(), x->CBT.end(), std::make_pair(-INF, std::vector<bool>()));
     x->mp.clear();
     x->interested_pairs.clear();
     if (x->is_leaf)
@@ -482,7 +494,7 @@ void clear_structures(pMatrix *x) {
     clear_structures(x->sec);
 }
 
-unsigned long long decode2(pMatrix *x, const std::vector<double> &data, long long &comps, long long &adds) {
+std::vector<bool> decode2(pMatrix *x, const std::vector<double> &data, long long &comps, long long &adds) {
     clear_structures(x);
     return x->CBT[main_decode2(x, data, comps, adds, 0)].second;
 }
@@ -514,11 +526,8 @@ void check(int r, int m, bool f) {
             for (size_t j = 0; j < coded.size(); j++)
                 noise.push_back(d(gen));
             auto x = add_noise(coded, noise);
-            std::vector<bool> recieve(coded.size(), false);
-
-            auto ans = (f) ? decode2(ptr, x, comps, adds) : decode(ptr, x, comps, adds);
-            to_vector(ans, recieve);
-            auto decoded = get_message(t, recieve);
+            auto recieved = (f) ? decode2(ptr, x, comps, adds) : decode(ptr, x, comps, adds);
+            auto decoded = get_message(t, recieved);
             cnt += cmp(decoded, word);
         }
         std::cout.precision(7);
@@ -536,44 +545,34 @@ void check_polar(size_t n, size_t k, bool f) {
     std::mt19937 gen{rd()};
     long long comps = 0, adds = 0;
     PolarEncoder q = PolarEncoder(n, k);
-    for (double Eb_N0_dB = 0.0; Eb_N0_dB <= 6.0; Eb_N0_dB += 1.) {
+    for (double Eb_N0_dB = 3.0; Eb_N0_dB <= 5.0; Eb_N0_dB += 1.) {
         double sigma_square = 0.5 * ((double) n / k) * ((double) pow(10.0, -Eb_N0_dB / 10));
         std::normal_distribution<> d{0, sqrt(sigma_square)};
         q.reuse_frozen(sqrt(sigma_square));
-        for (size_t i = 0; i < q.frozen.size(); i++)
-            if (q.frozen[i])
-                std::cout << i << ' ';
-        std::cout << "\n";
         auto v = q.getRealGenMatrix();
         matrix t(v);
         auto *ptr = new pMatrix(0, t.m);
         t.to_span();
         prepare(ptr, t, f);
-        run(ptr, t);
         std::cout << ptr->difficult << "\n";
+        run(ptr, t);
+
+        std::cout << "Created \n";
         int cnt = 0;
         comps = 0;
         adds = 0;
         for (size_t i = 0; i < ITER; i++) {
+            std::cout << i << ":\n";
             std::vector<bool> word = gen_rand_vect(t.n);
             std::vector<bool> coded = mulVectorMatrix(word, v);
 //            std::vector<bool> new_coded = mulVectorMatrix(word, v);
-            for (size_t i = 0; i < coded.size(); i++)
-                std::cout << coded[i] << ' ';
-            std::cout << "\n";
 
             std::vector<double> noise;
             noise.reserve(coded.size());
             for (size_t j = 0; j < coded.size(); j++)
                 noise.push_back(d(gen));
             auto x = add_noise(coded, noise);
-            std::vector<bool> recieve(coded.size(), false);
-
-            auto ans = (f) ? decode2(ptr, x, comps, adds) : decode(ptr, x, comps, adds);
-            to_vector(ans, recieve);
-            for (size_t i = 0; i < recieve.size(); i++)
-                std::cout << recieve[i] << ' ';
-            std::cout << "\n";
+            auto recieve = (f) ? decode2(ptr, x, comps, adds) : decode(ptr, x, comps, adds);
             cnt += cmp(recieve, coded);
         }
         std::cout.precision(7);
@@ -589,12 +588,12 @@ void check_polar(size_t n, size_t k, bool f) {
 
 int main() {
     srand(time(NULL));
-//    check(1, 3, false);
-//    check(2, 5, false);
+//    check(1, 3, true);
+//    check(2, 5, true);
 //    check(2, 6, false);
 //    check(3, 6, true);
 //    check(4, 6, false);
-    check_polar(16, 8, false);
+    check_polar(256, 128, false);
     return 0;
 }
 
