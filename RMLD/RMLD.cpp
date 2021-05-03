@@ -2,9 +2,16 @@
 #include "reed_muller.h"
 #include <unordered_map>
 #include "polar_encoder.h"
+#include "thread"
+
+const int threads_count = 16;
+
+std::mutex myMutex;
 
 struct branch {
     long long ind_l, ind_r, val;
+
+    branch() = default;
 
     bool operator==(branch const &a) const {
         return a.ind_l == ind_l && a.ind_r == ind_r && a.val == val;
@@ -17,6 +24,18 @@ struct branch {
     }
 };
 
+struct pair_hash {
+    template <class T1, class T2>
+    std::size_t operator () (const std::pair<T1,T2> &p) const {
+        auto h1 = std::hash<T1>{}(p.first);
+        auto h2 = std::hash<T2>{}(p.second);
+
+        // Mainly for demonstration purposes, i.e. works but is overly simple
+        // In the real world, use sth. like boost.hash_combine
+        return h1 ^ h2;
+    }
+};
+
 struct pMatrix {
     bool is_leaf;
     pMatrix *fir, *sec;
@@ -25,10 +44,10 @@ struct pMatrix {
     std::vector<branch> rules;
     unsigned long long difficult;
     std::vector<std::pair<double, std::vector<bool>>> CBT;
-    std::vector<std::vector<std::pair<long long, long long>>> rules_l, rules_r, rules_cos;
+    std::vector<std::vector<std::pair<long long, long long>>> rules_l, rules_r;
     std::vector<bool> used;
     std::vector<size_t> best;
-    std::map<std::pair<size_t, size_t>, double> mp;
+    std::unordered_map<std::pair<size_t, size_t>, double, pair_hash> mp;
     std::vector<branch> interested_pairs;
 
     pMatrix(int _l, int _r) {
@@ -136,20 +155,48 @@ struct pMatrix {
         used.resize(cosets_count, false);
         rules_l.resize(fir->CBT.size());
         rules_r.resize(sec->CBT.size());
-        rules_cos.resize(cosets_count);
+        for (size_t i = 0; i < rules_l.size(); i++)
+            rules_l.reserve(masks_count / cosets_count * 2);
+        for (size_t i = 0; i < rules_r.size(); i++)
+            rules_r.reserve(masks_count / cosets_count * 2);
+        rules.resize(masks_count);
+//        update(left_system_solutions, right_system_solutions, 0, masks_count, cosets_count);
 //        std::cout << "l=" << l << ' ' << "r=" << r << "\n";
 //        std::cout << "masks_count: " << masks_count << "cosets_count: " << cosets_count << "\n";
-        for (size_t i = 0; i < masks_count; i++) {
+        auto action = [this](const std::vector<std::vector<bool>> &left_system_solutions,
+                             const std::vector<std::vector<bool>> &right_system_solutions, size_t mini, size_t maxi,
+                             size_t cosets_count) {
+            update(left_system_solutions, right_system_solutions, mini, maxi, cosets_count);
+        };
 
+        std::vector<std::thread> threads;
+        for (size_t i = 0; i < threads_count; i++) {
+            size_t mini = (masks_count / threads_count) * i;
+            size_t maxi = (masks_count / threads_count) * (i + 1);
+            if (i == threads_count - 1)
+                maxi = masks_count;
+            threads.push_back(
+                    std::thread(action, std::ref(left_system_solutions), std::ref(right_system_solutions), mini, maxi,
+                                cosets_count));
+        }
+        for (size_t i = 0; i < threads.size(); i++)
+            threads[i].join();
+    }
+
+
+    void update(const std::vector<std::vector<bool>> &left_system_solutions,
+                const std::vector<std::vector<bool>> &right_system_solutions, size_t mini, size_t maxi,
+                size_t cosets_count) {
+        for (size_t i = mini; i < maxi; i++) {
             long long fir_ind = get_ind(left_system_solutions, i, fir->fourth_sz, true);
             long long sec_ind = get_ind(right_system_solutions, i, sec->fourth_sz, true);
             long long rule = i % cosets_count;
-            rules.emplace_back(fir_ind, sec_ind, rule);
+            rules[i] = branch(fir_ind, sec_ind, rule);
+            std::lock_guard<std::mutex> myLock(myMutex);
             rules_l[fir_ind].push_back({sec_ind, rule});
             rules_r[sec_ind].push_back({fir_ind, rule});
-            rules_cos[rule].push_back({fir_ind, sec_ind});
         }
-    };
+    }
 
     ~pMatrix() {
         if (fir != nullptr)
@@ -158,7 +205,13 @@ struct pMatrix {
             delete sec;
 
     }
+};
 
+struct CBT {
+    pMatrix *x;
+    std::vector<size_t> best;
+    std::unordered_map<std::pair<size_t, size_t>, double> mp;
+    std::vector<branch> interested_pairs;
 
 };
 
@@ -226,7 +279,7 @@ void run(pMatrix *x, const matrix &generator) {
     x->combCBT(generator, mid);
 //    x->printMt();
     x->merge();
-//    std::cout << x->l << ' ' << x->r << "\n";
+    std::cout << x->l << ' ' << x->r << "\n";
 }
 
 
@@ -414,7 +467,6 @@ size_t main_decode2(pMatrix *x, const std::vector<double> &data, long long &comp
                     insert_to_vector(x, branch(cos_l, t, unused_right[t]), comps, adds);
                     max_ind_r = j;
                     f = true;
-//                    std::cout << x->l << ' ' << x->r << ' ' << ind_l << ' ' << max_ind_r << "\n";
                     break;
                 }
             }
@@ -562,6 +614,7 @@ void check_polar(size_t n, size_t k, bool f) {
         comps = 0;
         adds = 0;
         for (size_t i = 0; i < ITER; i++) {
+            std::cout << i << "\n";
             std::vector<bool> word = gen_rand_vect(t.n);
             std::vector<bool> coded = mulVectorMatrix(word, v);
 //            std::vector<bool> new_coded = mulVectorMatrix(word, v);
@@ -574,6 +627,7 @@ void check_polar(size_t n, size_t k, bool f) {
             auto recieve = (f) ? decode2(ptr, x, comps, adds) : decode(ptr, x, comps, adds);
             cnt += cmp(recieve, coded);
         }
+        std::cout << "\n";
         std::cout.precision(7);
         std::cout << std::fixed << (int) Eb_N0_dB << ' ' << (double) cnt / ITER << " " << (comps + adds) / ITER
                   << "\n";
