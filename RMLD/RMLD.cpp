@@ -4,7 +4,7 @@
 #include "polar_encoder.h"
 #include "thread"
 
-const int threads_count = 16;
+const int threads_count = 32;
 
 std::mutex myMutex;
 
@@ -25,8 +25,8 @@ struct branch {
 };
 
 struct pair_hash {
-    template <class T1, class T2>
-    std::size_t operator () (const std::pair<T1,T2> &p) const {
+    template<class T1, class T2>
+    std::size_t operator()(const std::pair<T1, T2> &p) const {
         auto h1 = std::hash<T1>{}(p.first);
         auto h2 = std::hash<T2>{}(p.second);
 
@@ -155,14 +155,15 @@ struct pMatrix {
         used.resize(cosets_count, false);
         rules_l.resize(fir->CBT.size());
         rules_r.resize(sec->CBT.size());
-        for (size_t i = 0; i < rules_l.size(); i++)
-            rules_l.reserve(masks_count / cosets_count * 2);
-        for (size_t i = 0; i < rules_r.size(); i++)
-            rules_r.reserve(masks_count / cosets_count * 2);
+//        for (size_t i = 0; i < rules_l.size(); i++)
+//            rules_l.reserve(masks_count / cosets_count * 2);
+//        for (size_t i = 0; i < rules_r.size(); i++)
+//            rules_r.reserve(masks_count / cosets_count * 2);
         rules.resize(masks_count);
+        std::cout << "l=" << l << ' ' << "r=" << r << "\n";
+        std::cout << "masks_count: " << masks_count << "cosets_count: " << cosets_count << "\n";
 //        update(left_system_solutions, right_system_solutions, 0, masks_count, cosets_count);
-//        std::cout << "l=" << l << ' ' << "r=" << r << "\n";
-//        std::cout << "masks_count: " << masks_count << "cosets_count: " << cosets_count << "\n";
+
         auto action = [this](const std::vector<std::vector<bool>> &left_system_solutions,
                              const std::vector<std::vector<bool>> &right_system_solutions, size_t mini, size_t maxi,
                              size_t cosets_count) {
@@ -279,7 +280,7 @@ void run(pMatrix *x, const matrix &generator) {
     x->combCBT(generator, mid);
 //    x->printMt();
     x->merge();
-    std::cout << x->l << ' ' << x->r << "\n";
+//    std::cout << x->l << ' ' << x->r << "\n";
 }
 
 
@@ -513,6 +514,8 @@ size_t main_decode2(pMatrix *x, const std::vector<double> &data, long long &comp
                 break;
         }
         //assert(x->interested_pairs.size() != 0);
+//        if (x->interested_pairs.size() == 0)
+//            return -1;
         double mx = x->mp[{x->interested_pairs[0].ind_l, x->interested_pairs[0].ind_r}];
         std::pair<size_t, size_t> best_pair = {x->interested_pairs[0].ind_l, x->interested_pairs[0].ind_r};
         size_t ans = x->interested_pairs[0].val;
@@ -592,12 +595,13 @@ void check(int r, int m, bool f) {
     delete ptr;
 }
 
-void check_polar(size_t n, size_t k, bool f) {
+void check_polar(size_t n, size_t k, bool f, int cnt_iter) {
     std::random_device rd{};
     std::mt19937 gen{rd()};
     long long comps = 0, adds = 0;
     PolarEncoder q = PolarEncoder(n, k);
-    for (double Eb_N0_dB = 0.0; Eb_N0_dB <= 5.0; Eb_N0_dB += 1.) {
+    for (double Eb_N0_dB = 2.0; Eb_N0_dB <= 2.0; Eb_N0_dB += 0.5) {
+
         double sigma_square = 0.5 * ((double) n / k) * ((double) pow(10.0, -Eb_N0_dB / 10));
         std::normal_distribution<> d{0, sqrt(sigma_square)};
         q.reuse_frozen(sqrt(sigma_square));
@@ -613,8 +617,8 @@ void check_polar(size_t n, size_t k, bool f) {
         int cnt = 0;
         comps = 0;
         adds = 0;
-        for (size_t i = 0; i < ITER; i++) {
-            std::cout << i << "\n";
+        std::cout << std::fixed << (double) Eb_N0_dB << ' ';
+        for (size_t i = 0; i < cnt_iter; i++) {
             std::vector<bool> word = gen_rand_vect(t.n);
             std::vector<bool> coded = mulVectorMatrix(word, v);
 //            std::vector<bool> new_coded = mulVectorMatrix(word, v);
@@ -625,11 +629,13 @@ void check_polar(size_t n, size_t k, bool f) {
                 noise.push_back(d(gen));
             auto x = add_noise(coded, noise);
             auto recieve = (f) ? decode2(ptr, x, comps, adds) : decode(ptr, x, comps, adds);
+            if (f)
+                std::cout << i << " " << (adds + comps) / (i + 1) << "\n";
             cnt += cmp(recieve, coded);
         }
         std::cout << "\n";
         std::cout.precision(7);
-        std::cout << std::fixed << (int) Eb_N0_dB << ' ' << (double) cnt / ITER << " " << (comps + adds) / ITER
+        std::cout << (double) cnt / cnt_iter << " " << (comps + adds) / cnt_iter
                   << "\n";
 //        deletePtr(ptr);
     }
@@ -645,8 +651,9 @@ int main() {
 //    check(2, 5, true);
 //    check(2, 6, false);
 //    check(3, 6, true);
-//    check(4, 6, false);
-    check_polar(256, 128, false);
+//    check(3, 6, true);
+//    check_polar(256, 128, false, 201);
+    check_polar(256, 128, true, 100);
     return 0;
 }
 
