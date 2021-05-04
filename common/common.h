@@ -18,7 +18,7 @@
 
 const int INF = 10000;
 
-const int ITER = 100000;
+const int ITER = 1000;
 
 
 size_t get_first_one(std::vector<bool> t) {
@@ -109,7 +109,7 @@ struct matrix {
     void print() {
         for (size_t i = 0; i < n; i++) {
             for (size_t j = 0; j < m; j++)
-                std::cout << mt[i][j];
+                std::cout << mt[i][j] << ' ';
             std::cout << "\n";
         }
     }
@@ -186,7 +186,7 @@ int calc_w(std::vector<std::pair<size_t, bool>> a, std::vector<std::pair<size_t,
     return res;
 }
 
-void to_vector(unsigned long long &x, std::vector<bool> &ans) {
+void to_vector(unsigned long long x, std::vector<bool> &ans) {
     for (auto &&an : ans) {
         an = (x & 1);
         x >>= 1;
@@ -270,7 +270,6 @@ std::vector<bool> gen_rand_vect(size_t n) {
 }
 
 int cmp(std::vector<bool> &a, std::vector<bool> &b) {
-    int cnt = 0;
     for (size_t i = 0; i < a.size(); i++)
         if (a[i] != b[i])
             return 1;
@@ -292,14 +291,16 @@ std::vector<double> add_noise(std::vector<bool> &message, std::vector<double> &n
     std::vector<double> res;
     for (size_t i = 0; i < message.size(); i++) {
         if (!message[i])
-            res.push_back(-1 + 0);
+            res.push_back(-1 + noise[i]);
         else
-            res.push_back(1 + 0);
+            res.push_back(1 + noise[i]);
     }
     return res;
 }
 
 std::vector<std::vector<bool>> transpose(const std::vector<std::vector<bool>> &x) {
+    if (x.size() == 0)
+        return std::vector<std::vector<bool>>();
     std::vector<std::vector<bool>> ans;
     ans.resize(x[0].size(), std::vector<bool>(x.size(), 0));
     for (size_t i = 0; i < ans.size(); i++) {
@@ -332,12 +333,14 @@ int type_row(const std::vector<bool> &x, const int &l, const int &m, const int &
     if (p.first == -1)
         return -1;
     if (m != -1) {
-        if (p.first >= l && p.second <= m)
+//        if (p.first == p.second && p.first == m || p.first == p.second && p.first == l)
+//            return 2;
+        if (p.first >= l && p.second < m)
             return 0;
-        if (p.first >= m && p.second <= r)
+        if (p.first >= m && p.second < r)
             return 1;
     }
-    if (p.first >= l && p.second <= r)
+    if (p.first >= l && p.second < r)
         return 2;
     return 3;
 }
@@ -403,6 +406,8 @@ void gauss(std::vector<std::vector<bool>> a, std::vector<bool> &ans) {
 size_t get_ind(const std::vector<std::vector<bool>> &system_sols, size_t &x, int &sz, bool f) {
     std::vector<bool> num;
     int n = system_sols.size();
+    if (n == 0 && f)
+        return 0;
     for (size_t i = 0; i < n; i++) {
         num.emplace_back((x >> (n - i - 1)) & 1);
     }
@@ -420,19 +425,6 @@ size_t get_ind(const std::vector<std::vector<bool>> &system_sols, size_t &x, int
 
 }
 
-std::vector<std::vector<bool>>
-kron_mul(const std::vector<std::vector<bool>> &a, const std::vector<std::vector<bool>> &b) {
-    std::vector<std::vector<bool>> ans(a.size() * b.size(), std::vector<bool>(a[0].size() * b[0].size(), 0));
-    for (size_t i = 0; i < a.size(); i++) {
-        for (size_t j = 0; j < a[0].size(); j++) {
-            for (size_t x = 0; x < b.size(); x++)
-                for (size_t y = 0; y < b[0].size(); y++)
-                    ans[x * a.size() + i][y * a[0].size() + j] = (a[i][j] & b[x][y]);
-        }
-    }
-    return ans;
-}
-
 void print(const std::vector<std::vector<bool>> &x) {
     for (size_t i = 0; i < x.size(); i++) {
         for (size_t j = 0; j < x[0].size(); j++)
@@ -441,25 +433,21 @@ void print(const std::vector<std::vector<bool>> &x) {
     }
 }
 
-std::vector<std::vector<bool>>
-mul_matrixes(const std::vector<std::vector<bool>> &a, const std::vector<std::vector<bool>> &b) {
-    std::vector<std::vector<bool>> ans(a.size(), std::vector<bool>(b[0].size(), 0));
-    for (int i = 0; i < a.size(); i++) {
-        for (int j = 0; j < b[0].size(); j++) {
-            for (int q = 0; q < a[0].size(); q++) {
-                ans[i][j] = ((a[i][q] & b[q][j]) ^ ans[i][j]);
-            }
-        }
-    }
-    return ans;
-}
-
 std::vector<bool> mulVectorMatrix(const std::vector<bool> &x, const std::vector<std::vector<bool>> &mat) {
     std::vector<bool> ans(mat[0].size(), false);
     for (size_t i = 0; i < mat.size(); i++)
         if (x[i])
             add(ans, mat[i]);
     return ans;
+}
+
+std::vector<bool> concat(const std::vector<bool> &a, const std::vector<bool> &b) {
+    std::vector<bool> x;
+    for (auto i : a)
+        x.push_back(i);
+    for (auto i : b)
+        x.push_back(i);
+    return x;
 }
 
 
