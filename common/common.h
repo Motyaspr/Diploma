@@ -18,7 +18,7 @@
 
 const int INF = 10000;
 
-const int ITER = 1000;
+const int ITER = 1;
 
 
 size_t get_first_one(std::vector<bool> t) {
@@ -179,6 +179,14 @@ struct vertex {
     vertex() = default;
 };
 
+std::vector<bool> mulVectorMatrix(const std::vector<bool> &x, const std::vector<std::vector<bool>> &mat) {
+    std::vector<bool> ans(mat[0].size(), false);
+    for (size_t i = 0; i < mat.size(); i++)
+        if (x[i])
+            add(ans, mat[i]);
+    return ans;
+}
+
 int calc_w(std::vector<std::pair<size_t, bool>> a, std::vector<std::pair<size_t, bool>> b) {
     int res = 0;
     for (size_t i = 0; i < a.size(); i++)
@@ -190,6 +198,14 @@ void to_vector(unsigned long long x, std::vector<bool> &ans) {
     for (auto &&an : ans) {
         an = (x & 1);
         x >>= 1;
+    }
+}
+
+void to_vector2(unsigned long long x, std::vector<bool> &ans) {
+    int ind = ans.size() - 1;
+    while (x > 0) {
+        ans[ind--] = x % 2;
+        x /= 2;
     }
 
 }
@@ -379,7 +395,7 @@ std::vector<std::vector<bool>> prepare_matrix(const std::vector<std::vector<bool
     return ans;
 }
 
-void gauss(std::vector<std::vector<bool>> a, std::vector<bool> &ans) {
+bool gauss(std::vector<std::vector<bool>> a, std::vector<bool> &ans) {
     int n = (int) a.size();
     int m = (int) a[0].size() - 1;
 
@@ -399,8 +415,101 @@ void gauss(std::vector<std::vector<bool>> a, std::vector<bool> &ans) {
                 add(a[i], a[row]);
         ++row;
     }
+
+    for (size_t i = 0; i < a.size(); i++) {
+        bool f = true;
+        for (size_t j = 0; j < a[i].size() - 1; j++)
+            if (a[i][j] == true) {
+                f = false;
+                break;
+            }
+        if (f && a[i].back() == 1)
+            return false;
+    }
     for (size_t i = 0; i < m; i++)
         ans[i] = a[where[i]].back();
+    return true;
+}
+
+void stupenchatiy(std::vector<std::vector<bool>> &a) {
+    int n = (int) a.size();
+    int m = (int) a[0].size();
+
+    std::vector<int> where(m, -1);
+    for (int col = 0, row = 0; col < m && row < n; ++col) {
+        for (int i = row; i < n; ++i)
+            if (a[i][col]) {
+                swap(a[i], a[row]);
+                break;
+            }
+        if (!a[row][col])
+            continue;
+        where[col] = row;
+
+        for (int i = 0; i < n; ++i)
+            if (i != row && a[i][col])
+                add(a[i], a[row]);
+        ++row;
+    }
+}
+
+std::vector<long long>
+get_all_adj(std::vector<bool> part, const std::vector<std::vector<bool>> &fir_matrix,
+            std::vector<std::vector<bool>> sec_matrix, size_t cnt, size_t a_sz) {
+    size_t len = (fir_matrix.size() - a_sz);
+    std::vector<long long> answer;
+    for (size_t ind = 0; ind < (1 << (len)); ind++) {
+        for (size_t i = 0; i < len; i++) {
+            part[i] = get_bit(ind, i, len);
+        }
+        auto res = mulVectorMatrix(part, fir_matrix);
+        for (size_t i = 0; i < (1 << cnt); i++) {
+            for (size_t j = 0; j < res.size(); j++)
+                sec_matrix[j].back() = res[j];
+            for (size_t j = 0; j < cnt; j++) {
+                sec_matrix[res.size() + j].back() = (get_bit(i, j, cnt));
+            }
+            std::vector<bool> ans_(sec_matrix[0].size() - 1, false);
+            bool f = gauss(sec_matrix, ans_);
+            if (f) {
+                std::cout << "GOOD:";
+                for (size_t j = 0; j < len; j++)
+                    std::cout << part[j];
+                std::cout << "\n";
+                long long x = 0;
+                for (size_t j = 0; j < ans_.size(); j++) {
+                    x = x * 2 + ans_[j];
+                }
+                answer.push_back(x);
+            } else {
+                std::cout << "BAD:";
+                for (size_t j = 0; j < len; j++)
+                    std::cout << part[j];
+                std::cout << "\n";
+            }
+        }
+    }
+    return answer;
+
+}
+
+std::vector<size_t> get_free(std::vector<std::vector<bool>> a) {
+    stupenchatiy(a);
+    size_t cur_j = 0;
+    std::vector<size_t> q;
+    for (size_t i = 0; i < a.size() && cur_j < a[0].size(); i++)
+        if (a[i][cur_j] == true) {
+            cur_j++;
+        } else {
+            while (a[i][cur_j] != true && cur_j < a[0].size()) {
+                q.push_back(cur_j);
+                cur_j++;
+            }
+            cur_j++;
+        }
+    while (cur_j < a[0].size())
+        q.push_back(cur_j++);
+    return q;
 }
 
 size_t get_ind(const std::vector<std::vector<bool>> &system_sols, size_t &x, int &sz, bool f) {
@@ -431,14 +540,6 @@ void print(const std::vector<std::vector<bool>> &x) {
             std::cout << x[i][j] << ' ';
         std::cout << "\n";
     }
-}
-
-std::vector<bool> mulVectorMatrix(const std::vector<bool> &x, const std::vector<std::vector<bool>> &mat) {
-    std::vector<bool> ans(mat[0].size(), false);
-    for (size_t i = 0; i < mat.size(); i++)
-        if (x[i])
-            add(ans, mat[i]);
-    return ans;
 }
 
 std::vector<bool> concat(const std::vector<bool> &a, const std::vector<bool> &b) {
