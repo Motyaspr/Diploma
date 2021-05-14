@@ -444,8 +444,6 @@ void stupenchatiy(std::vector<std::vector<bool>> &a) {
             }
         if (!a[row][col])
             continue;
-        where[col] = row;
-
         for (int i = 0; i < n; ++i)
             if (i != row && a[i][col])
                 add(a[i], a[row]);
@@ -509,10 +507,15 @@ std::vector<size_t> get_free(std::vector<std::vector<bool>> a) {
         }
     while (cur_j < a[0].size())
         q.push_back(cur_j++);
+    for (size_t i = 0; i < q.size(); i++) {
+        std::vector<bool> tmp(a[0].size(), false);
+        tmp[q[i]] = true;
+        a.push_back(tmp);
+    }
     return q;
 }
 
-size_t get_ind(const std::vector<std::vector<bool>> &system_sols, size_t &x, int &sz, bool f) {
+size_t get_ind(const std::vector<std::vector<bool>> &system_sols, size_t &x, int &sz, bool f, bool ff) {
     std::vector<bool> num;
     int n = system_sols.size();
     if (n == 0 && f)
@@ -530,15 +533,49 @@ size_t get_ind(const std::vector<std::vector<bool>> &system_sols, size_t &x, int
         ans *= 2;
         ans += answer[i];
     }
+//        bool new_f = (answer[answer.size() - 2] == 1);
+//        for (size_t i = 0; i < answer.size(); i++)
+//            if (i != answer.size() - 2 && answer[i])
+//                new_f = false;
+//        if (new_f) {
+//            std::cout << "CHECK THIS VALUE:\n";
+//            size_t copyx = x;
+//            std::vector<bool> kek;
+//            while (copyx) {
+//                kek.push_back(copyx % 2);
+//                copyx /= 2;
+//            }
+//            while (kek.size() < 14)
+//                kek.push_back(0);
+//            std::reverse(kek.begin(), kek.end());
+//            for (size_t i = 0; i < kek.size(); i++)
+//                std::cout << kek[i] << ' ';
+//            std::cout << "\n";
+//
+//
+//        }
+//    }
     return ans;
 
 }
 
+void print2(const std::vector<std::vector<bool>> &x) {
+    for (size_t i = 0; i < x.size(); i++) {
+        for (size_t j = 0; j < x[0].size(); j++) {
+            std::cout << x[i][j] << ' ';
+        }
+        std::cout << "\n";
+    }
+}
+
 void print(const std::vector<std::vector<bool>> &x) {
     for (size_t i = 0; i < x.size(); i++) {
-        for (size_t j = 0; j < x[0].size(); j++)
-            std::cout << x[i][j] << ' ';
-        std::cout << "\n";
+        for (size_t j = 0; j < x[0].size() - 1; j++) {
+            if (x[i][j])
+                std::cout << "x" << j << " + ";
+        }
+
+        std::cout << " = " <<  x[i].back() << ", ";
     }
 }
 

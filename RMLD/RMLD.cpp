@@ -50,16 +50,15 @@ struct pMatrix {
     std::vector<std::vector<bool>> mt;
     std::vector<branch> rules;
     unsigned long long difficult;
-    size_t left_basis, right_basis;
     std::vector<std::pair<double, std::vector<bool>>> CBT;
-    std::vector<std::vector<std::pair<long long, long long>>> rules_l, rules_r, rules_l2;
+    std::vector<std::vector<std::pair<long long, long long>>> rules_l, rules_r, rules_l2, rules_r2;
     std::vector<std::vector<bool>> solutions_for_left_part, oneD_solutions_for_left_part;
+    std::vector<std::vector<bool>> solutions_for_right_part, oneD_solutions_for_right_part;
     std::vector<size_t> best;
     std::unordered_map<std::pair<size_t, size_t>, double, pair_hash> mp;
     std::set<branch> interested_pairs;
     std::unordered_map<long long, long long> unused_left, unused_right;
     std::vector<std::vector<bool>> left_system_solutions, right_system_solutions;
-    std::vector<size_t> left_indexes;
 
     pMatrix(int _l, int _r) {
         l = _l;
@@ -119,7 +118,7 @@ struct pMatrix {
         CBT.resize(cosets_count);
         rules.resize(1ll << (r - l), {-1, -1, -1});
         for (size_t i = 0; i < masks_count; i++) {
-            auto x = get_ind(mt, i, r, false);
+            auto x = get_ind(mt, i, r, false, false);
             rules[x] = {-1, -1, (long long) i % cosets_count};
         }
     }
@@ -146,7 +145,7 @@ struct pMatrix {
 //        std::cout << "sec " << sec->mt.size() << ' ' << sec->mt[0].size() << "\n";
 //        sec->printMt();
 //        std::cout << "a'size =" << fir->mt.size() - fir->fourth_sz << "\n";
-//        std::vector<std::vector<std::vector<bool>>> all_left_creation;
+        std::vector<std::vector<std::vector<bool>>> all_left_creation;
         for (size_t i = mt.size() - fourth_sz - third_sz; i < mt.size(); i++) {
             std::vector<bool> half1;
             std::vector<bool> half2;
@@ -160,20 +159,26 @@ struct pMatrix {
         }
         auto mt1T = transpose(mt1);
         auto mt2T = transpose(mt2);
-        left_indexes = get_free(mt1T);
-        auto right_indices = get_free(mt2T);
-        for (size_t i = 0; i < left_indexes.size(); i++) {
-            std::vector<bool> v(mt1T[0].size(), false);
-            v[left_indexes[i]] = true;
-            mt1T.push_back(v);
+        for (size_t i = 0; i < fir->mt.size() - fir->fourth_sz; i++)
+            for (size_t j = 0; j < fir->mt[i].size(); j++)
+                mt1T[j].push_back(fir->mt[i][j]);
+        for (size_t i = 0; i < sec->mt.size() - sec->fourth_sz; i++)
+            for (size_t j = 0; j < sec->mt[i].size(); j++)
+                mt2T[j].push_back(sec->mt[i][j]);
+        auto q = get_free(mt1T);
+        for (size_t i = 0; i < q.size(); i++) {
+            std::vector<bool> tmp(mt1T[0].size(), false);
+            tmp[q[i]] = true;
+            mt1T.push_back(tmp);
+        }
+        q = get_free(mt2T);
+        for (size_t i = 0; i < q.size(); i++) {
+            std::vector<bool> tmp(mt2T[0].size(), false);
+            tmp[q[i]] = true;
+            mt2T.push_back(tmp);
         }
         for (size_t i = 0; i < mt1T.size(); i++)
             mt1T[i].push_back(false);
-        for (size_t i = 0; i < right_indices.size(); i++) {
-            std::vector<bool> v(mt2T[0].size(), false);
-            v[right_indices[i]] = true;
-            mt2T.push_back(v);
-        }
         for (size_t i = 0; i < mt2T.size(); i++)
             mt2T[i].push_back(false);
 
@@ -200,85 +205,60 @@ struct pMatrix {
         long long cosets_count = (1ll << (fourth_sz));
         long long masks_count = (1ll << (third_sz + fourth_sz));
 //        CBT.resize(cosets_count, {-INF, std::vector<bool>()});
-//        rules_l.resize(fir->CBT.size());
-//        rules_r.resize(sec->CBT.size());
+        rules_l.resize(1 << fir->fourth_sz);
+        rules_r.resize(1 << sec->fourth_sz);
         rules.resize(masks_count);
-//        std::cout << "l=" << l << ' ' << "r=" << r << "\n";
-//        std::cout << "masks_count: " << masks_count << "cosets_count: " << cosets_count << "\n";
-        long long total_neighbours_left = masks_count / (1ll << fir->fourth_sz);
-//        update(0, masks_count, cosets_count);
-        std::vector<bool> partL(fir->mt.size(), false);
-        size_t lenL = partL.size() - fir->fourth_sz;
-        std::vector<std::vector<bool>> need_a;
+        update(0, masks_count, cosets_count);
         std::vector<bool> ans_(mt1T[0].size() - 1, false);
-        size_t cur_cnt = 0;
-        std::cout << "COUNT OF GAUSSES=" << (1 << lenL) << "\n";
-        std::cout << "COUNT OF GOOD a'=" << total_neighbours_left / (1 << left_indexes.size()) << "\n";
-        for (size_t i = 0; i < (1 << lenL); i++) {
-            for (size_t j = 0; j < lenL; j++)
-                partL[j] = get_bit(i, j, lenL);
-            auto resL = mulVectorMatrix(partL, fir->mt);
-            for (size_t j = 0; j < resL.size(); j++)
-                mt1T[j].back() = resL[j];
-            if (gauss(mt1T, ans_)) {
-                need_a.push_back(partL);
-                cur_cnt += (1 << left_indexes.size());
-                if (cur_cnt == total_neighbours_left)
-                    break;
-            }
-        }
-        stupenchatiy(need_a);
-        left_basis = need_a.size();
-        for (size_t i = 0; i < need_a.size(); i++) {
-            bool f = true;
-            for (size_t j = 0; j < need_a[i].size(); j++)
-                if (need_a[i][j]) {
-                    f = false;
-                    break;
-                }
-            if (f) {
-                left_basis = i;
-                break;
-            }
-        }
-        while (need_a.size() > left_basis)
-            need_a.pop_back();
-        for (size_t i = 0; i < need_a.size(); i++) {
-            auto res = mulVectorMatrix(need_a[i], fir->mt);
-            for (size_t j = 0; j < res.size(); j++)
-                mt1T[j].back() = res[j];
-            gauss(mt1T, ans_);
-            solutions_for_left_part.push_back(ans_);
+        std::vector<bool> ans_2(mt2T[0].size() - 1, false);
+
+        for (size_t j = sec->mt.size() - sec->fourth_sz; j < sec->mt.size(); j++) {
+            auto answer = sec->mt[j];
+            for (size_t k = 0; k < sec->mt[j].size(); k++)
+                mt2T[k].back() = answer[k];
+            assert(gauss(mt2T, ans_2));
+            solutions_for_right_part.push_back(ans_2);
         }
 
-        for (size_t i = 0; i < mt1T.size(); i++)
-            mt1T[i].back() = false;
         for (size_t j = fir->mt.size() - fir->fourth_sz; j < fir->mt.size(); j++) {
+            auto answer = fir->mt[j];
             for (size_t k = 0; k < fir->mt[j].size(); k++)
-                mt1T[k].back() = fir->mt[j][k];
-            gauss(mt1T, ans_);
+                mt1T[k].back() = answer[k];
+            assert(gauss(mt1T, ans_));
             solutions_for_left_part.push_back(ans_);
         }
         for (size_t i = 0; i < mt1T.size(); i++)
             mt1T[i].back() = false;
+        for (size_t i = 0; i < mt2T.size(); i++)
+            mt2T[i].back() = false;
+
         for (size_t i = fir->mt[0].size(); i < mt1T.size(); i++) {
             mt1T[i].back() = true;
             gauss(mt1T, ans_);
             oneD_solutions_for_left_part.push_back(ans_);
             mt1T[i].back() = false;
         }
-
-
-
-//        for (size_t i = 0; i < fir->CBT.size(); i++) {
+        for (size_t i = sec->mt[0].size(); i < mt2T.size(); i++) {
+            mt2T[i].back() = true;
+            gauss(mt2T, ans_2);
+            oneD_solutions_for_right_part.push_back(ans_2);
+            mt2T[i].back() = false;
+        }
+//        for (size_t i = 0; i < (1ll << fir->fourth_sz); i++) {
 //            rules_l2.push_back(to_mul_left(i));
-////            auto t = get_all_adj(partL, fir->mt, mt1T, left_indices.size(), fir->fourth_sz);
-//
+//        }
+//        for (size_t i = 0; i < (1ll << sec->fourth_sz); i++) {
+//            rules_r2.push_back(to_mul_right(i));
 //        }
 //        for (size_t i = 0; i < rules_l.size(); i++) {
 //            std::sort(rules_l[i].begin(), rules_l[i].end());
 //            std::sort(rules_l2[i].begin(), rules_l2[i].end());
 //            assert(rules_l[i] == rules_l2[i]);
+//        }
+//        for (size_t i = 0; i < rules_r.size(); i++) {
+//            std::sort(rules_r[i].begin(), rules_r[i].end());
+//            std::sort(rules_r2[i].begin(), rules_r2[i].end());
+//            assert(rules_r[i] == rules_r2[i]);
 //        }
 //        auto action = [this](const std::vector<std::vector<bool>> &left_system_solutions,
 //                             const std::vector<std::vector<bool>> &right_system_solutions, size_t mini, size_t maxi,
@@ -304,23 +284,40 @@ struct pMatrix {
         std::vector<std::pair<long long, long long>> all_pairs;
         std::vector<bool> part_l(solutions_for_left_part.size());
         to_vector2(x, part_l);
-        for (size_t ind = 0; ind < (1 << left_basis); ind++) {
-            for (size_t i = 0; i < left_basis; i++)
-                part_l[i] = get_bit(ind, i, left_basis);
-            auto answer = mulVectorMatrix(part_l, solutions_for_left_part);
-            for (size_t i = 0; i < (1 << oneD_solutions_for_left_part.size()); i++) {
-                std::vector<bool> summer(answer.size(), false);
-                for (size_t j = 0; j < oneD_solutions_for_left_part.size(); j++)
-                    if (get_bit(i, j, oneD_solutions_for_left_part.size()))
-                        add(summer, oneD_solutions_for_left_part[j]);
-                add(summer, answer);
-                long long coset = 0;
-                for (size_t i = 0; i < summer.size(); i++)
-                    coset = coset * 2 + summer[i];
-                all_pairs.push_back(
-                        {get_ind(right_system_solutions, reinterpret_cast<size_t &>(coset), sec->fourth_sz, true),
-                         coset % (1 << fourth_sz)});
-            }
+        auto answer = mulVectorMatrix(part_l, solutions_for_left_part);
+        for (size_t i = 0; i < (1ll << oneD_solutions_for_left_part.size()); i++) {
+            std::vector<bool> summer(answer.size(), false);
+            for (size_t j = 0; j < oneD_solutions_for_left_part.size(); j++)
+                if (get_bit(i, j, oneD_solutions_for_left_part.size()))
+                    add(summer, oneD_solutions_for_left_part[j]);
+            add(summer, answer);
+            long long coset = 0;
+            for (size_t i = 0; i < summer.size(); i++)
+                coset = coset * 2 + summer[i];
+            all_pairs.push_back(
+                    {get_ind(right_system_solutions, reinterpret_cast<size_t &>(coset), sec->fourth_sz, true, false),
+                     coset % (1 << fourth_sz)});
+        }
+        return all_pairs;
+    }
+
+    std::vector<std::pair<long long, long long>> to_mul_right(long long x) {
+        std::vector<std::pair<long long, long long>> all_pairs;
+        std::vector<bool> part_r(solutions_for_right_part.size());
+        to_vector2(x, part_r);
+        auto answer = mulVectorMatrix(part_r, solutions_for_right_part);
+        for (size_t i = 0; i < (1ll << oneD_solutions_for_right_part.size()); i++) {
+            std::vector<bool> summer(answer.size(), false);
+            for (size_t j = 0; j < oneD_solutions_for_right_part.size(); j++)
+                if (get_bit(i, j, oneD_solutions_for_right_part.size()))
+                    add(summer, oneD_solutions_for_right_part[j]);
+            add(summer, answer);
+            long long coset = 0;
+            for (size_t i = 0; i < summer.size(); i++)
+                coset = coset * 2 + summer[i];
+            all_pairs.push_back(
+                    {get_ind(left_system_solutions, reinterpret_cast<size_t &>(coset), fir->fourth_sz, true, false),
+                     coset % (1 << fourth_sz)});
         }
         return all_pairs;
     }
@@ -328,8 +325,8 @@ struct pMatrix {
     void update(size_t mini, size_t maxi,
                 size_t cosets_count) {
         for (size_t i = mini; i < maxi; i++) {
-            long long fir_ind = get_ind(left_system_solutions, i, fir->fourth_sz, true);
-            long long sec_ind = get_ind(right_system_solutions, i, sec->fourth_sz, true);
+            long long fir_ind = get_ind(left_system_solutions, i, fir->fourth_sz, true, true);
+            long long sec_ind = get_ind(right_system_solutions, i, sec->fourth_sz, true, false);
             long long rule = i % cosets_count;
             rules[i] = branch(fir_ind, sec_ind, rule);
             std::lock_guard<std::mutex> myLock(myMutex);
@@ -739,7 +736,7 @@ void check_polar(size_t n, size_t k, bool f, int cnt_iter) {
     std::mt19937 gen{rd()};
     long long comps = 0, adds = 0;
     PolarEncoder q = PolarEncoder(n, k);
-    for (double Eb_N0_dB = 4.0; Eb_N0_dB <= 4.0; Eb_N0_dB += 1) {
+    for (double Eb_N0_dB = 0.0; Eb_N0_dB <= 6.0; Eb_N0_dB += 1) {
 
         double sigma_square = 0.5 * ((double) n / k) * ((double) pow(10.0, -Eb_N0_dB / 10));
         std::normal_distribution<> d{0, sqrt(sigma_square)};
@@ -775,7 +772,7 @@ void check_polar(size_t n, size_t k, bool f, int cnt_iter) {
         }
         std::cout << "\n";
         std::cout.precision(7);
-        std::cout << (double) cnt / cnt_iter << " " << (comps + adds) / cnt_iter
+        std::cout << (double) cnt / (cnt_iter + 1) << " " << (comps + adds) / (cnt_iter + 1)
                   << "\n";
 //        deletePtr(ptr);
     }
@@ -787,16 +784,13 @@ void check_polar(size_t n, size_t k, bool f, int cnt_iter) {
 
 int main() {
     srand(time(NULL));
-//    check(3, 6, true);
+//    check(1, 3, true);
 //    check(2, 5, true);
 //    check(2, 6, false);
+//   check(3, 6, true);
 //    check(3, 6, true);
-//    check(3, 6, true);
-//    check_polar(256, 128, 0);
-    check_polar(256, 128, true, 0);
-//    std::vector<std::vector<bool>> a = {{1, 1, 1, 0}, {1, 0, 1, 0}};
-//    std::vector<bool> ans(3, false);
-//    gauss(a, ans);
+    check_polar(128, 64, false, 0);
+//    check_polar(1024, 512, true, 0);
+
     return 0;
 }
-

@@ -44,8 +44,6 @@ struct PolarEncoder {
         create_A();
         auto mat = createB(n);
         g = mul_matrixes(mat, A);
-        assert(mul_matrixes(mat, A) == mul_matrixes(A, mat));
-
     }
 
     void reuse_frozen(double prob) {
