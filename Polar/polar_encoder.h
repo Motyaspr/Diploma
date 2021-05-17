@@ -1,6 +1,8 @@
 #ifndef DIPLOMA_POLAR_ENCODER_H
 #define DIPLOMA_POLAR_ENCODER_H
 
+#include <algorithm>
+
 std::vector<std::vector<bool>>
 mul_matrixes(const std::vector<std::vector<bool>> &a, const std::vector<std::vector<bool>> &b) {
     std::vector<std::vector<bool>> ans(a.size(), std::vector<bool>(b[0].size(), 0));

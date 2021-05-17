@@ -1,4 +1,6 @@
 #include <iostream>
+#include <cmath>
+#include <algorithm>
 #include "TalVardyListDecoder.h"
 
 void TalVardyListDecoder::init_data_structures(bool f) {

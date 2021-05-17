@@ -2,7 +2,9 @@
 #include "reed_muller.h"
 #include <unordered_map>
 #include "polar_encoder.h"
-#include "thread"
+#include <thread>
+#include <mutex>
+#include <cassert>
 
 const int threads_count = 32;
 
@@ -344,12 +346,12 @@ struct pMatrix {
 struct CBT {
     const pMatrix *x;
     std::vector<size_t> best;
-    std::unordered_map<std::pair<size_t, size_t>, double, pair_hash> mp;
     std::set<branch> interested_pairs;
     std::map<long long, long long> unused_left, unused_right;
     std::vector<std::pair<double, std::vector<bool>>> final_CBT;
-    std::map<long long, long long> index_mapping, left_index_mapping, right_index_mapping;
-    std::vector<std::vector<std::pair<long long, long long>>> left_neighbors, right_neighbors;
+    std::map<long long, long long> index_mapping;
+    std::unordered_map<long long, long long> left_index_mapping;
+    std::vector<std::vector<std::pair<long long, long long>>> left_neighbors;
 
     CBT() = default;
 
@@ -359,6 +361,9 @@ struct CBT {
 
     CBT(const CBT& another) {
         x = another.x;
+    }
+
+    CBT(CBT&& another) : x(another.x) {
     }
 };
 
@@ -598,7 +603,7 @@ size_t log2(size_t x) {
 
 long long
 main_decode2(std::vector<CBT> &r, size_t index, const std::vector<double> &data, long long &comps, long long &adds,
-             size_t b, size_t depth) {
+             size_t b, size_t depth, size_t cnt1, size_t cnt2) {
     CBT &t = r[index];
     if (t.best.size() > b)
         return t.best[b];
@@ -626,13 +631,13 @@ main_decode2(std::vector<CBT> &r, size_t index, const std::vector<double> &data,
     } else {
         size_t lCBT_size = (1ll << x->fir->fourth_sz);
         size_t rCBT_size = (1ll << x->sec->fourth_sz);
-        size_t max_ind_r = std::min(rCBT_size, 120 + depth * 90);
-        size_t to_count_l = std::min(lCBT_size, 120 + depth * 90);
+        size_t max_ind_r = std::min(rCBT_size, cnt1 + depth * cnt2);
+        size_t to_count_l = std::min(lCBT_size, cnt1 + depth * cnt2);
         size_t ind_l = 0;
         while (max_ind_r != 0) {
             size_t cnt = 0;
             t.unused_right.clear();
-            size_t cos_l = main_decode2(r, index * 2, data, comps, adds, ind_l, depth + 1);
+            size_t cos_l = main_decode2(r, index * 2, data, comps, adds, ind_l, depth + 1, cnt1, cnt2);
             if (cos_l == -1)
                 break;
             if (t.left_index_mapping.find(cos_l) == t.left_index_mapping.end()) {
@@ -654,7 +659,7 @@ main_decode2(std::vector<CBT> &r, size_t index, const std::vector<double> &data,
             }
             bool f = false;
             for (size_t j = 0; j < max_ind_r; j++) {
-                auto t_neighbor = main_decode2(r, index * 2 + 1, data, comps, adds, j, depth + 1);
+                auto t_neighbor = main_decode2(r, index * 2 + 1, data, comps, adds, j, depth + 1, cnt1, cnt2);
                 if (t_neighbor == -1)
                     break;
                 if (t.unused_right.find(t_neighbor) != t.unused_right.end()) {
@@ -717,19 +722,16 @@ main_decode2(std::vector<CBT> &r, size_t index, const std::vector<double> &data,
         for (auto it : t.interested_pairs) {
             size_t real_left_index = r[index * 2].index_mapping[it.ind_l];
             size_t real_right_index = r[index * 2 + 1].index_mapping[it.ind_r];
-            double val = t.mp[{it.ind_l, it.ind_r}];
-            if (val == 0.0) {
-                t.mp[{it.ind_l, it.ind_r}] = r[index * 2].final_CBT[real_left_index].first +
-                                             r[index * 2 + 1].final_CBT[real_right_index].first;
-                val = t.mp[{it.ind_l, it.ind_r}];
-                adds++;
-            }
+            double val = r[index * 2].final_CBT[real_left_index].first +
+                         r[index * 2 + 1].final_CBT[real_right_index].first;
+            adds++;
             comps++;
             if (val > mx) {
                 mx = val;
                 best_pair = it;
             }
         }
+        comps--;
         t.best.push_back(best_pair.val);
         t.index_mapping[best_pair.val] = t.final_CBT.size();
         size_t real_left_index = r[index * 2].index_mapping[best_pair.ind_l];
@@ -744,7 +746,6 @@ main_decode2(std::vector<CBT> &r, size_t index, const std::vector<double> &data,
 void clear_structures(std::vector<CBT> &t, size_t index) {
     t[index].best.clear();
     t[index].final_CBT.clear();
-    t[index].mp.clear();
     t[index].interested_pairs.clear();
     t[index].index_mapping.clear();
     if (t[index].x->is_leaf)
@@ -753,9 +754,9 @@ void clear_structures(std::vector<CBT> &t, size_t index) {
     clear_structures(t, index * 2 + 1);
 }
 
-std::vector<bool> decode2(std::vector<CBT> &t, const std::vector<double> &data, long long &comps, long long &adds) {
+std::vector<bool> decode2(std::vector<CBT> &t, const std::vector<double> &data, long long &comps, long long &adds, size_t cnt1, size_t cnt2) {
     clear_structures(t, 1);
-    auto ind = main_decode2(t, 1, data, comps, adds, 0, 0);
+    auto ind = main_decode2(t, 1, data, comps, adds, 0, 0, cnt1, cnt2);
     if (ind == -1)
         return std::vector<bool>(t[1].x->r - t[1].x->l, false);
     return t[1].final_CBT[ind].second;
@@ -798,7 +799,7 @@ void check(int r, int m, bool f) {
             for (size_t j = 0; j < coded.size(); j++)
                 noise.push_back(d(gen));
             auto x = add_noise(coded, noise);
-            auto recieved = (f) ? decode2(all_CBTs, x, comps, adds) : decode(all_CBTs, 1, x, comps, adds);
+            auto recieved = (f) ? decode2(all_CBTs, x, comps, adds, 100, 100) : decode(all_CBTs, 1, x, comps, adds);
             auto decoded = get_message(t, recieved);
             cnt += cmp(decoded, word);
 
@@ -813,31 +814,33 @@ void check(int r, int m, bool f) {
     delete ptr;
 }
 
-void one_thread_work(std::vector<CBT> q, std::vector<std::vector<bool>> before_noise,
-                     const std::vector<std::vector<double>> codewords, long long &adds, long long &comps,
-                     size_t &good) {
+void one_thread_work(std::vector<CBT> &q, std::vector<std::vector<bool>> &before_noise,
+                     const std::vector<std::vector<double>> &codewords, long long &adds, long long &comps,
+                     size_t &good, size_t cnt1, size_t cnt2) {
     for (size_t i = 0; i < codewords.size(); i++) {
-        auto recieve = decode2(q, codewords[i], comps, adds);
-        std::cout << i << " " << (adds + comps) / (i + 1) << "\n";
+        auto recieve = decode2(q, codewords[i], comps, adds, cnt1, cnt2);
+        if (i % 2 == 0)
+            std::cout << i << " " << (adds + comps) / (i + 1) << "\n";
         good += cmp(recieve, before_noise[i]);
     }
 }
 
-void check_polar(size_t n, size_t k, bool f, int cnt_iter, size_t threads_cnt) {
+void check_polar(size_t n, size_t k, bool f, size_t cnt_iter, size_t threads_cnt, size_t cnt1, size_t cnt2) {
     std::random_device rd{};
     std::mt19937 gen{rd()};
-    std::vector<long long> comps(threads_cnt), adds(threads_cnt), goods(threads_cnt);
-    std::vector<std::vector<std::vector<bool>>> before_coded;
-    std::vector<std::vector<std::vector<double>>> with_noise;
+    std::vector<long long> comps(threads_cnt), adds(threads_cnt);
+    std::vector<size_t> goods(threads_cnt);
+    std::vector<std::vector<std::vector<bool>>> before_coded(threads_cnt);
+    std::vector<std::vector<std::vector<double>>> with_noise(threads_cnt);
     PolarEncoder q = PolarEncoder(n, k);
     std::vector<std::thread> threads;
-    auto action = [](std::vector<CBT> q,
-                     std::vector<std::vector<bool>> before_noise, const std::vector<std::vector<double>> codewords,
-                     long long &adds1, long long &comps1,
-                     size_t &goodd) {
-        return one_thread_work(q, before_noise, codewords, comps1, adds1, goodd);
-    };
-    for (double Eb_N0_dB = 2.0; Eb_N0_dB <= 4.0; Eb_N0_dB += 0.5) {
+//    auto action = [](std::vector<CBT> q,
+//                     std::vector<std::vector<bool>> before_noise, const std::vector<std::vector<double>> codewords,
+//                     long long &adds1, long long &comps1,
+//                     size_t &goodd) {
+//        return one_thread_work(q, before_noise, codewords, comps1, adds1, goodd);
+//    };
+    for (double Eb_N0_dB = 1.0; Eb_N0_dB <= 5.0; Eb_N0_dB += 0.5) {
         std::vector<std::vector<CBT>> all_CBT(threads_cnt, std::vector<CBT>(4 * n));
         double sigma_square = 0.5 * ((double) n / k) * ((double) pow(10.0, -Eb_N0_dB / 10));
         std::normal_distribution<> d{0, sqrt(sigma_square)};
@@ -872,12 +875,12 @@ void check_polar(size_t n, size_t k, bool f, int cnt_iter, size_t threads_cnt) {
                 noise.push_back(d(gen));
             auto x = add_noise(coded, noise);
 
-            before_coded[std::min(i / threads_cnt, threads_cnt - 1)].push_back(coded);
-            with_noise[std::min(i / threads_cnt, threads_cnt - 1)].push_back(x);
+            before_coded[i % threads_cnt].push_back(coded);
+            with_noise[i % threads_cnt].push_back(x);
         }
         for (size_t i = 0; i < threads_cnt; i++)
-            threads.push_back(std::thread(action, all_CBT[i], before_coded[i], with_noise[i],
-                              std::ref(adds[i]), std::ref(comps[i]), std::ref(goods[i])));
+            threads.push_back(std::thread(one_thread_work, std::ref(all_CBT[i]), std::ref(before_coded[i]), std::cref(with_noise[i]),
+                              std::ref(adds[i]), std::ref(comps[i]), std::ref(goods[i]), std::ref(cnt1), std::ref(cnt2)));
         std::cout.precision(7);
         for (size_t i = 0; i < threads.size(); i++)
             threads[i].join();
@@ -900,7 +903,8 @@ int main() {
 //    check(2, 6, true);
 //    check(3, 6, true);
 //    check(3, 6, true);
-    check_polar(256, 128, true, 40, 4);
+//    check_polar(256, 128, true, 1000, 8);
+    check_polar(512, 256, true, 24, 8, 50, 100);
 //    check_polar(1024, 512, true, 0);
 
     return 0;

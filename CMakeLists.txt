@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.17)
+cmake_minimum_required(VERSION 3.16)
 project(Diploma)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -7,7 +7,8 @@ set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG -Wall -O2")
 
 include_directories(common)
 include_directories(viterbi)
-include_directories(polar)
+include_directories(Polar)
+include_directories(${CMAKE_SOURCE_DIR})
 
 add_executable(Diploma
         viterbi/viterbi.cpp
@@ -19,4 +20,5 @@ add_library(polar_libary STATIC common/common.h Polar/polar_encoder.h Polar/TalV
         Polar/TalVardyListDecoder.cpp viterbi/reed_muller.h)
 
 add_executable(polar Polar/encode.cpp)
-target_link_libraries(polar polar_libary)
+target_link_libraries(polar polar_libary -lpthread)
+target_link_libraries(RMLD -lpthread)

@@ -5,16 +5,16 @@
 
 int main() {
     srand(time(0));
-    int N = 1024;
-    int log_N = 10;
-    int K = 512;
+    int N = 512;
+    int log_N = 9;
+    int K = 256;
 
     std::random_device rd{};
     std::mt19937 gen{rd()};
     PolarEncoder t(N, K);
-    for (size_t l = 1; l <= 2; l *= 2) {
+    for (size_t l = 1; l <= 16; l *= 2) {
         std::cout << "Polar Code(" << N << ", " << K << ", " << l << ")\n";
-        for (double Eb_N0_dB = 0.0; Eb_N0_dB <= 4.0; Eb_N0_dB += 0.5) {
+        for (double Eb_N0_dB = 0.0; Eb_N0_dB <= 6.0; Eb_N0_dB += 0.5) {
             double sigma_square = 0.5 * ((double) N / K) * ((double) pow(10.0, -Eb_N0_dB / 10));
             std::normal_distribution<> d{0, sqrt(sigma_square)};
             t.reuse_frozen(sqrt(sigma_square));

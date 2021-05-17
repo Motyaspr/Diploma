@@ -3,6 +3,8 @@
 
 #include <stack>
 #include <vector>
+#include <cstdint>
+
 
 struct TalVardyListDecoder {
     int M, K, L;
