@@ -180,6 +180,8 @@ struct vertex {
 };
 
 std::vector<bool> mulVectorMatrix(const std::vector<bool> &x, const std::vector<std::vector<bool>> &mat) {
+    if (mat.empty())
+        return std::vector<bool>();
     std::vector<bool> ans(mat[0].size(), false);
     for (size_t i = 0; i < mat.size(); i++)
         if (x[i])
@@ -364,6 +366,58 @@ int type_row(const std::vector<bool> &x, const int &l, const int &m, const int &
 std::vector<bool> copy(const std::vector<bool> &x, const int &l, const int &r) {
     return std::vector<bool>(x.begin() + l, x.begin() + r);
 }
+
+std::vector<std::vector<bool>>
+get_reversed_matrix(std::vector<std::vector<bool>> t, std::vector<std::pair<size_t, size_t>> &swaps) {
+    for (size_t i = 0; i < swaps.size(); i++)
+        for (size_t ind = 0; ind < t.size(); ind++) {
+            std::swap(t[ind][swaps[i].first], t[ind][swaps[i].second]);
+        }
+    std::vector<std::vector<bool>> E(t.size(), std::vector<bool>(t.size(), false));
+    for (size_t i = 0; i < E.size(); i++) {
+        E[i][i] = true;
+    }
+    int last = 0;
+    for (size_t i = 0; i < t.size(); i++) {
+        for (size_t j = 0; j < t.size(); j++) {
+            if (i == j)
+                continue;
+            if (t[j][last]) {
+                add(t[j], t[i]);
+                add(E[j], E[i]);
+            }
+        }
+        last++;
+        if (last == t[0].size())
+            break;
+    }
+    return E;
+}
+
+std::vector<std::pair<size_t, size_t>> systematic_form(std::vector<std::vector<bool>> &t) {
+    int last = 0;
+    std::vector<std::pair<size_t, size_t>> swaps;
+    for (int i = 0; i < t.size(); i++) {
+        auto p = get_ones({t[i].begin() + last, t[i].end()});
+        if (p.first == -1) {
+            continue;
+        }
+        swaps.emplace_back(last, p.first + last);
+        for (int j = 0; j < t.size(); j++)
+            std::swap(t[j][last], t[j][p.first + last]);
+        for (size_t j = 0; j < t.size(); j++) {
+            if (i == j)
+                continue;
+            if (t[j][last])
+                add(t[j], t[i]);
+        }
+        last++;
+        if (last == t[0].size())
+            break;
+    }
+    return swaps;
+}
+
 
 std::vector<std::vector<bool>> prepare_matrix(const std::vector<std::vector<bool>> &x, int &cnt) {
     auto t = x;
@@ -575,7 +629,7 @@ void print(const std::vector<std::vector<bool>> &x) {
                 std::cout << "x" << j << " + ";
         }
 
-        std::cout << " = " <<  x[i].back() << ", ";
+        std::cout << " = " << x[i].back() << ", ";
     }
 }
 

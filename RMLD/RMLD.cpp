@@ -6,9 +6,7 @@
 #include <mutex>
 #include <cassert>
 
-const int threads_count = 32;
-
-const int MIN_LEN_LEAF = 8;
+const int MIN_LEN_LEAF = 4;
 
 std::mutex myMutex;
 
@@ -53,10 +51,14 @@ struct pMatrix {
     std::vector<branch> rules;
     unsigned long long difficult;
     std::vector<std::pair<double, std::vector<bool>>> CBT_2;
-    std::vector<std::vector<std::pair<long long, long long>>> rules_l, rules_r, rules_l2, rules_r2;
+    std::vector<std::vector<std::pair<long long, long long>>> rules_l, rules_r;
     std::vector<std::vector<bool>> solutions_for_left_part, oneD_solutions_for_left_part;
     std::vector<std::vector<bool>> solutions_for_right_part, oneD_solutions_for_right_part;
     std::vector<std::vector<bool>> left_system_solutions, right_system_solutions;
+    std::vector<std::vector<bool>> G;
+    std::vector<std::pair<size_t, size_t>> swaps;
+    std::vector<std::vector<bool>> check_matrix;
+    std::vector<std::vector<bool>> reversed;
 
     pMatrix(int _l, int _r) {
         l = _l;
@@ -157,91 +159,143 @@ struct pMatrix {
         }
         auto mt1T = transpose(mt1);
         auto mt2T = transpose(mt2);
-        for (size_t i = 0; i < fir->mt.size() - fir->fourth_sz; i++)
+// new code
+        std::vector<std::vector<bool>> systematic_form_matrix;
+        for (size_t i = mt.size() - third_sz - fourth_sz; i < mt.size(); i++)
+            systematic_form_matrix.push_back(mt[i]);
+        for (size_t i = 0; i < mt.size() - third_sz - fourth_sz; i++)
+            systematic_form_matrix.push_back(mt[i]);
+        auto reversed_prepared = systematic_form_matrix;
+        swaps = systematic_form(systematic_form_matrix);
+        reversed = get_reversed_matrix(reversed_prepared, swaps);
+        std::vector<std::vector<bool>> check_mt;
+        for (size_t i = 0; i < systematic_form_matrix.size(); i++) {
+            std::vector<bool> tmp;
+            for (size_t j = systematic_form_matrix.size(); j < systematic_form_matrix[0].size(); j++)
+                tmp.push_back(systematic_form_matrix[i][j]);
+            check_mt.push_back(tmp);
+        }
+        check_mt = transpose(check_mt);
+        for (size_t i = 0; i < check_mt.size(); i++) {
+            std::vector<bool> tmp(check_mt.size(), false);
+            tmp[i] = true;
+            for (size_t j = 0; j < tmp.size(); j++)
+                check_mt[i].push_back(tmp[j]);
+        }
+        check_matrix = transpose(check_mt);
+        G.resize(fir->fourth_sz + sec->fourth_sz);
+        for (size_t i = fir->mt.size() - fir->fourth_sz; i < fir->mt.size(); i++) {
+            size_t ind = i - (fir->mt.size() - fir->fourth_sz);
             for (size_t j = 0; j < fir->mt[i].size(); j++)
-                mt1T[j].push_back(fir->mt[i][j]);
-        for (size_t i = 0; i < sec->mt.size() - sec->fourth_sz; i++)
+                G[ind].push_back(fir->mt[i][j]);
+            for (size_t j = 0; j < sec->mt[0].size(); j++)
+                G[ind + fir->fourth_sz].push_back(0);
+        }
+        for (size_t i = sec->mt.size() - sec->fourth_sz; i < sec->mt.size(); i++) {
+            size_t ind = i - (sec->mt.size() - sec->fourth_sz);
             for (size_t j = 0; j < sec->mt[i].size(); j++)
-                mt2T[j].push_back(sec->mt[i][j]);
-        auto q = get_free(mt1T);
-        for (size_t i = 0; i < q.size(); i++) {
-            std::vector<bool> tmp(mt1T[0].size(), false);
-            tmp[q[i]] = true;
-            mt1T.push_back(tmp);
+                G[fir->fourth_sz + ind].push_back(sec->mt[i][j]);
+            for (size_t j = 0; j < fir->mt[0].size(); j++)
+                G[ind].push_back(0);
         }
-        q = get_free(mt2T);
-        for (size_t i = 0; i < q.size(); i++) {
-            std::vector<bool> tmp(mt2T[0].size(), false);
-            tmp[q[i]] = true;
-            mt2T.push_back(tmp);
-        }
-        for (size_t i = 0; i < mt1T.size(); i++)
-            mt1T[i].push_back(false);
-        for (size_t i = 0; i < mt2T.size(); i++)
-            mt2T[i].push_back(false);
-        for (auto &i : left)
-            i.push_back(false);
-        for (auto &i : right)
-            i.push_back(false);
-        std::vector<bool> ans_l, ans_r;
-        if (!left.empty())
-            ans_l.resize(left[0].size() - 1);
-        if (right.size() != 0)
-            ans_r.resize(right[0].size() - 1);
-        for (size_t i = mt.size() - third_sz - fourth_sz; i < mt.size(); i++) {
-            int ind = 0;
-            for (auto &j : left)
-                j.back() = mt[i][ind++];
-            for (auto &j : right)
-                j.back() = mt[i][ind++];
-            gauss(left, ans_l);
-            left_system_solutions.push_back(ans_l);
-            gauss(right, ans_r);
-            right_system_solutions.push_back(ans_r);
-        }
+
+//        for (size_t i = 0; i < fir->mt.size() - fir->fourth_sz; i++)
+//            for (size_t j = 0; j < fir->mt[i].size(); j++)
+//                mt1T[j].push_back(fir->mt[i][j]);
+//        for (size_t i = 0; i < sec->mt.size() - sec->fourth_sz; i++)
+//            for (size_t j = 0; j < sec->mt[i].size(); j++)
+//                mt2T[j].push_back(sec->mt[i][j]);
+//        auto q = get_free(mt1T);
+//        for (size_t i = 0; i < q.size(); i++) {
+//            std::vector<bool> tmp(mt1T[0].size(), false);
+//            tmp[q[i]] = true;
+//            mt1T.push_back(tmp);
+//        }
+//        q = get_free(mt2T);
+//        for (size_t i = 0; i < q.size(); i++) {
+//            std::vector<bool> tmp(mt2T[0].size(), false);
+//            tmp[q[i]] = true;
+//            mt2T.push_back(tmp);
+//        }
+//        for (size_t i = 0; i < mt1T.size(); i++)
+//            mt1T[i].push_back(false);
+//        for (size_t i = 0; i < mt2T.size(); i++)
+//            mt2T[i].push_back(false);
+//        for (auto &i : left)
+//            i.push_back(false);
+//        for (auto &i : right)
+//            i.push_back(false);
+//        std::vector<bool> ans_l, ans_r;
+//        if (!left.empty())
+//            ans_l.resize(left[0].size() - 1);
+//        if (right.size() != 0)
+//            ans_r.resize(right[0].size() - 1);
+//        for (size_t i = mt.size() - third_sz - fourth_sz; i < mt.size(); i++) {
+//            int ind = 0;
+//            for (auto &j : left)
+//                j.back() = mt[i][ind++];
+//            for (auto &j : right)
+//                j.back() = mt[i][ind++];
+//            gauss(left, ans_l);
+//            left_system_solutions.push_back(ans_l);
+//            gauss(right, ans_r);
+//            right_system_solutions.push_back(ans_r);
+//        }
 //        long long cosets_count = (1ll << (fourth_sz));
 //        long long masks_count = (1ll << (third_sz + fourth_sz));
 //        CBT_2.resize(cosets_count, {-INF, std::vector<bool>()});
 //        rules_l.resize(1 << fir->fourth_sz);
 //        rules_r.resize(1 << sec->fourth_sz);
 //        rules.resize(masks_count);
-        std::vector<bool> ans_(third_sz + fourth_sz, false);
-        std::vector<bool> ans_2(third_sz + fourth_sz, false);
-
-        for (size_t j = sec->mt.size() - sec->fourth_sz; j < sec->mt.size(); j++) {
-            auto answer = sec->mt[j];
-            for (size_t k = 0; k < sec->mt[j].size(); k++)
-                mt2T[k].back() = answer[k];
-            gauss(mt2T, ans_2);
-            solutions_for_right_part.push_back(ans_2);
-        }
-
-        for (size_t j = fir->mt.size() - fir->fourth_sz; j < fir->mt.size(); j++) {
-            auto answer = fir->mt[j];
-            for (size_t k = 0; k < fir->mt[j].size(); k++)
-                mt1T[k].back() = answer[k];
-            gauss(mt1T, ans_);
-            solutions_for_left_part.push_back(ans_);
-        }
-
-        for (size_t i = 0; i < mt1T.size(); i++)
-            mt1T[i].back() = false;
-        for (size_t i = 0; i < mt2T.size(); i++)
-            mt2T[i].back() = false;
-
-        for (size_t i = fir->mt[0].size(); i < mt1T.size(); i++) {
-            mt1T[i].back() = true;
-            gauss(mt1T, ans_);
-            oneD_solutions_for_left_part.push_back(ans_);
-            mt1T[i].back() = false;
-        }
-        for (size_t i = sec->mt[0].size(); i < mt2T.size(); i++) {
-            mt2T[i].back() = true;
-            gauss(mt2T, ans_2);
-            oneD_solutions_for_right_part.push_back(ans_2);
-            mt2T[i].back() = false;
-        }
-
+//        std::vector<bool> ans_(third_sz + fourth_sz, false);
+//        std::vector<bool> ans_2(third_sz + fourth_sz, false);
+//
+//        for (size_t j = sec->mt.size() - sec->fourth_sz; j < sec->mt.size(); j++) {
+//            auto answer = sec->mt[j];
+//            for (size_t k = 0; k < sec->mt[j].size(); k++)
+//                mt2T[k].back() = answer[k];
+//            gauss(mt2T, ans_2);
+//            solutions_for_right_part.push_back(ans_2);
+//        }
+//
+//        for (size_t j = fir->mt.size() - fir->fourth_sz; j < fir->mt.size(); j++) {
+//            auto answer = fir->mt[j];
+//            for (size_t k = 0; k < fir->mt[j].size(); k++)
+//                mt1T[k].back() = answer[k];
+//            gauss(mt1T, ans_);
+//            solutions_for_left_part.push_back(ans_);
+//        }
+//
+//        for (size_t i = 0; i < mt1T.size(); i++)
+//            mt1T[i].back() = false;
+//        for (size_t i = 0; i < mt2T.size(); i++)
+//            mt2T[i].back() = false;
+//
+//        for (size_t i = fir->mt[0].size(); i < mt1T.size(); i++) {
+//            mt1T[i].back() = true;
+//            gauss(mt1T, ans_);
+//            oneD_solutions_for_left_part.push_back(ans_);
+//            mt1T[i].back() = false;
+//        }
+//        for (size_t i = sec->mt[0].size(); i < mt2T.size(); i++) {
+//            mt2T[i].back() = true;
+//            gauss(mt2T, ans_2);
+//            oneD_solutions_for_right_part.push_back(ans_2);
+//            mt2T[i].back() = false;
+//        }
+//        update(0, masks_count, cosets_count);
+//        std::map<std::pair<long long, long long>, long long> s;
+//        for (auto & rule : rules)
+//            s[{rule.ind_l, rule.ind_r}] = rule.val;
+//        for (long long i = 0; i < (1 << fir->fourth_sz); i++) {
+//            for (long long j = 0; j < (1 << sec->fourth_sz); j++) {
+//                auto x = check_neighbors(i, j);
+//                if (x != -1)
+//                    assert(s[std::make_pair(i, j)] == x);
+//                else
+//                    assert(s.find({i, j}) == s.end());
+//            }
+//        }
 //        for (size_t i = 0; i < (1ll << fir->fourth_sz); i++) {
 //            rules_l2.push_back(to_mul_left(i));
 //        }
@@ -279,47 +333,69 @@ struct pMatrix {
 //            threads[i].join();
     }
 
-    std::vector<std::pair<long long, long long>> to_mul_left(long long x) const {
-        std::vector<std::pair<long long, long long>> all_pairs;
-        std::vector<bool> part_l(solutions_for_left_part.size());
-        to_vector2(x, part_l);
-        auto answer = mulVectorMatrix(part_l, solutions_for_left_part);
-        for (size_t i = 0; i < (1ll << oneD_solutions_for_left_part.size()); i++) {
-            std::vector<bool> summer(answer.size(), false);
-            for (size_t j = 0; j < oneD_solutions_for_left_part.size(); j++)
-                if (get_bit(i, j, oneD_solutions_for_left_part.size()))
-                    add(summer, oneD_solutions_for_left_part[j]);
-            add(summer, answer);
-            long long coset = 0;
-            for (size_t i = 0; i < third_sz + fourth_sz; i++)
-                coset = coset * 2 + summer[i];
-            all_pairs.push_back(
-                    {get_ind(right_system_solutions, reinterpret_cast<size_t &>(coset), sec->fourth_sz, true, false),
-                     coset % (1 << fourth_sz)});
-        }
-        return all_pairs;
+    long long check_neighbors(long long a, long long b) const{
+        std::vector<bool> a_vector(fir->fourth_sz, false);
+        std::vector<bool> b_vector(sec->fourth_sz, false);
+        to_vector2(a, a_vector);
+        to_vector2(b, b_vector);
+        for (auto && i : b_vector)
+            a_vector.push_back(i);
+        auto t = mulVectorMatrix(a_vector, G);
+        for (auto &j : swaps)
+            std::swap(t[j.first], t[j.second]);
+        auto tt = mulVectorMatrix(t, check_matrix);
+        for (auto &&j : tt)
+            if (j)
+                return -1;
+        auto ttr = mulVectorMatrix(t, reversed);
+        long long num = 0;
+        for (size_t i = third_sz; i < third_sz + fourth_sz; i++)
+            num = num * 2 + ttr[i];
+        return num;
     }
 
-    std::vector<std::pair<long long, long long>> to_mul_right(long long x) const {
-        std::vector<std::pair<long long, long long>> all_pairs;
-        std::vector<bool> part_r(solutions_for_right_part.size());
-        to_vector2(x, part_r);
-        auto answer = mulVectorMatrix(part_r, solutions_for_right_part);
-        for (size_t i = 0; i < (1ll << oneD_solutions_for_right_part.size()); i++) {
-            std::vector<bool> summer(answer.size(), false);
-            for (size_t j = 0; j < oneD_solutions_for_right_part.size(); j++)
-                if (get_bit(i, j, oneD_solutions_for_right_part.size()))
-                    add(summer, oneD_solutions_for_right_part[j]);
-            add(summer, answer);
-            long long coset = 0;
-            for (size_t i = 0; i < third_sz + fourth_sz; i++)
-                coset = coset * 2 + summer[i];
-            all_pairs.push_back(
-                    {get_ind(left_system_solutions, reinterpret_cast<size_t &>(coset), fir->fourth_sz, true, false),
-                     coset % (1 << fourth_sz)});
-        }
-        return all_pairs;
-    }
+
+//    [[nodiscard]] std::vector<std::pair<long long, long long>> to_mul_left(long long x) const {
+//        std::vector<std::pair<long long, long long>> all_pairs;
+//        std::vector<bool> part_l(solutions_for_left_part.size());
+//        to_vector2(x, part_l);
+//        auto answer = mulVectorMatrix(part_l, solutions_for_left_part);
+//        for (size_t i = 0; i < (1ll << oneD_solutions_for_left_part.size()); i++) {
+//            std::vector<bool> summer(answer.size(), false);
+//            for (size_t j = 0; j < oneD_solutions_for_left_part.size(); j++)
+//                if (get_bit(i, j, oneD_solutions_for_left_part.size()))
+//                    add(summer, oneD_solutions_for_left_part[j]);
+//            add(summer, answer);
+//            long long coset = 0;
+//            for (size_t i = 0; i < third_sz + fourth_sz; i++)
+//                coset = coset * 2 + summer[i];
+//            all_pairs.push_back(
+//                    {get_ind(right_system_solutions, reinterpret_cast<size_t &>(coset), sec->fourth_sz, true, false),
+//                     coset % (1 << fourth_sz)});
+//        }
+//        return all_pairs;
+//    }
+//
+//    std::vector<std::pair<long long, long long>> to_mul_right(long long x) const {
+//        std::vector<std::pair<long long, long long>> all_pairs;
+//        std::vector<bool> part_r(solutions_for_right_part.size());
+//        to_vector2(x, part_r);
+//        auto answer = mulVectorMatrix(part_r, solutions_for_right_part);
+//        for (size_t i = 0; i < (1ll << oneD_solutions_for_right_part.size()); i++) {
+//            std::vector<bool> summer(answer.size(), false);
+//            for (size_t j = 0; j < oneD_solutions_for_right_part.size(); j++)
+//                if (get_bit(i, j, oneD_solutions_for_right_part.size()))
+//                    add(summer, oneD_solutions_for_right_part[j]);
+//            add(summer, answer);
+//            long long coset = 0;
+//            for (size_t i = 0; i < third_sz + fourth_sz; i++)
+//                coset = coset * 2 + summer[i];
+//            all_pairs.push_back(
+//                    {get_ind(left_system_solutions, reinterpret_cast<size_t &>(coset), fir->fourth_sz, true, false),
+//                     coset % (1 << fourth_sz)});
+//        }
+//        return all_pairs;
+//    }
 
     void update(size_t mini, size_t maxi,
                 size_t cosets_count) {
@@ -328,7 +404,7 @@ struct pMatrix {
             long long sec_ind = get_ind(right_system_solutions, i, sec->fourth_sz, true, false);
             long long rule = i % cosets_count;
             rules[i] = branch(fir_ind, sec_ind, rule);
-            std::lock_guard<std::mutex> myLock(myMutex);
+//            std::lock_guard<std::mutex> myLock(myMutex);
             rules_l[fir_ind].push_back({sec_ind, rule});
             rules_r[sec_ind].push_back({fir_ind, rule});
         }
@@ -346,12 +422,15 @@ struct pMatrix {
 struct CBT {
     const pMatrix *x;
     std::vector<size_t> best;
-    std::set<branch> interested_pairs;
-    std::map<long long, long long> unused_left, unused_right;
+    std::set<std::pair<double, branch>> interested_pairs;
     std::vector<std::pair<double, std::vector<bool>>> final_CBT;
     std::map<long long, long long> index_mapping;
-    std::unordered_map<long long, long long> left_index_mapping;
-    std::vector<std::vector<std::pair<long long, long long>>> left_neighbors;
+    bool is_return_false;
+    size_t l_index_to_start, r_index_to_start;
+    std::vector<bool> l_trash, r_trash;
+    std::vector<int> max_calculated_index_left, max_calculated_index_right;
+    std::vector<int> relevant_indexes_left, relevant_indexes_right;
+    std::map<std::pair<long long, long long>, long long> neighbors;
 
     CBT() = default;
 
@@ -359,11 +438,11 @@ struct CBT {
         x = x1;
     }
 
-    CBT(const CBT& another) {
+    CBT(const CBT &another) {
         x = another.x;
     }
 
-    CBT(CBT&& another) : x(another.x) {
+    CBT(CBT &&another) : x(another.x) {
     }
 };
 
@@ -489,81 +568,89 @@ void Gray(CBT &t, const std::vector<double> &data, long long &comps, long long &
         std::set<std::pair<double, size_t>> s;
         for (size_t i = 0; i < t.final_CBT.size(); i++)
             s.insert({-t.final_CBT[i].first, i});
+        std::vector<std::pair<double, std::vector<bool>>> tmp;
+        size_t j = 0;
         for (auto it : s) {
             t.best.push_back(it.second);
+            tmp.push_back(t.final_CBT[it.second]);
+            t.index_mapping[it.second] = j++;
         }
+        t.final_CBT.clear();
+        t.final_CBT = tmp;
+
+    } else {
+        for (size_t i = 0; i < t.final_CBT.size(); i++)
+            t.index_mapping[i] = i;
     }
-    for (size_t i = 0; i < t.final_CBT.size(); i++)
-        t.index_mapping[i] = i;
 
 }
 
 std::vector<bool>
 decode(std::vector<CBT> &r, size_t index, const std::vector<double> &data, long long &comps, long long &adds) {
-    CBT &t = r[index];
-    t.final_CBT.assign(t.final_CBT.size(), {-INF, std::vector<bool>()});
-    auto x = t.x;
-    if (x->is_leaf) {
-        t.final_CBT.assign(t.final_CBT.size(), {-INF, std::vector<bool>()});
-        std::vector<bool> to_push(x->r - x->l, false);
-        if (x->r - x->l == 1) {
-            int curs = (data[x->l] > 0) ? 1 : 0;
-            double value = (data[x->l] > 0) ? data[x->l] : -data[x->l];
-            to_vector(curs, to_push);
-            t.final_CBT[x->rules[curs].val] = {value, to_push};
-            std::fill(to_push.begin(), to_push.end(), false);
-            if (x->mt.size() == 1) {
-                to_vector(curs ^ 1, to_push);
-                t.final_CBT[x->rules[1 ^ curs].val] = {-value, to_push};
-            }
-            return {};
-        }
-        Gray(t, data, comps, adds, false);
-    } else {
-        decode(r, index * 2, data, comps, adds);
-        decode(r, index * 2 + 1, data, comps, adds);
-        for (size_t i = 0; i < (1 << x->fir->fourth_sz); i++) {
-            if (t.left_index_mapping.find(i) == t.left_index_mapping.end()) {
-                t.left_index_mapping[i] = t.left_neighbors.size();
-                t.left_neighbors.push_back(t.x->to_mul_left(i));
-            }
-            auto neighbors = t.left_neighbors[t.left_index_mapping[i]];
-            for (auto it : neighbors) {
-                if (t.index_mapping.find(it.second) == t.index_mapping.end()) {
-                    t.index_mapping[it.second] = t.final_CBT.size();
-                    t.final_CBT.push_back({-INF, std::vector<bool>()});
-                }
-                size_t CBT_ind = t.index_mapping[it.second];
-                size_t real_first_ind = r[index * 2].index_mapping[i];
-                size_t real_second_ind = r[index * 2 + 1].index_mapping[it.first];
-//                std::cout << i << ' ' << it.first << ' ' << it.second << "\n";
-//                std::cout << real_first_ind << ' ' << real_second_ind << ' ' << CBT_ind << "\n";
-                adds++;
-                if (t.final_CBT[CBT_ind].first != -INF)
-                    comps++;
-                double sum = r[index * 2].final_CBT[real_first_ind].first +
-                             r[index * 2 + 1].final_CBT[real_second_ind].first;
-                if (t.final_CBT[CBT_ind].first < sum) {
-                    t.final_CBT[CBT_ind].first = sum;
-                    t.final_CBT[CBT_ind].second = concat(r[index * 2].final_CBT[real_first_ind].second,
-                                                         r[index * 2 + 1].final_CBT[real_second_ind].second);
-                }
-            }
-        }
-//        for (size_t i = 0; i < x->rules.size(); i++) {
-//            auto &ind = x->rules[i];
-//            double sum = x->fir->CBT_2[ind.ind_l].first + x->sec->CBT_2[ind.ind_r].first;
-//            adds++;
-//            if (i >= x->CBT_2.size())
-//                comps++;
-//            if (x->CBT_2[ind.val].first < sum) {
-//                x->CBT_2[ind.val] = {sum,
-//                                     concat(x->fir->CBT_2[ind.ind_l].second,
-//                                            x->sec->CBT_2[ind.ind_r].second)};
+//    CBT &t = r[index];
+//    t.final_CBT.assign(t.final_CBT.size(), {-INF, std::vector<bool>()});
+//    auto x = t.x;
+//    if (x->is_leaf) {
+//        t.final_CBT.assign(t.final_CBT.size(), {-INF, std::vector<bool>()});
+//        std::vector<bool> to_push(x->r - x->l, false);
+//        if (x->r - x->l == 1) {
+//            int curs = (data[x->l] > 0) ? 1 : 0;
+//            double value = (data[x->l] > 0) ? data[x->l] : -data[x->l];
+//            to_vector(curs, to_push);
+//            t.final_CBT[x->rules[curs].val] = {value, to_push};
+//            std::fill(to_push.begin(), to_push.end(), false);
+//            if (x->mt.size() == 1) {
+//                to_vector(curs ^ 1, to_push);
+//                t.final_CBT[x->rules[1 ^ curs].val] = {-value, to_push};
+//            }
+//            return {};
+//        }
+//        Gray(t, data, comps, adds, false);
+//    } else {
+//        decode(r, index * 2, data, comps, adds);
+//        decode(r, index * 2 + 1, data, comps, adds);
+//        for (size_t i = 0; i < (1 << x->fir->fourth_sz); i++) {
+//            if (t.left_index_mapping.find(i) == t.left_index_mapping.end()) {
+//                t.left_index_mapping[i] = t.left_neighbors.size();
+//                t.left_neighbors.push_back(t.x->to_mul_left(i));
+//            }
+//            auto neighbors = t.left_neighbors[t.left_index_mapping[i]];
+//            for (auto it : neighbors) {
+//                if (t.index_mapping.find(it.second) == t.index_mapping.end()) {
+//                    t.index_mapping[it.second] = t.final_CBT.size();
+//                    t.final_CBT.push_back({-INF, std::vector<bool>()});
+//                }
+//                size_t CBT_ind = t.index_mapping[it.second];
+//                size_t real_first_ind = r[index * 2].index_mapping[i];
+//                size_t real_second_ind = r[index * 2 + 1].index_mapping[it.first];
+////                std::cout << i << ' ' << it.first << ' ' << it.second << "\n";
+////                std::cout << real_first_ind << ' ' << real_second_ind << ' ' << CBT_ind << "\n";
+//                adds++;
+//                if (t.final_CBT[CBT_ind].first != -INF)
+//                    comps++;
+//                double sum = r[index * 2].final_CBT[real_first_ind].first +
+//                             r[index * 2 + 1].final_CBT[real_second_ind].first;
+//                if (t.final_CBT[CBT_ind].first < sum) {
+//                    t.final_CBT[CBT_ind].first = sum;
+//                    t.final_CBT[CBT_ind].second = concat(r[index * 2].final_CBT[real_first_ind].second,
+//                                                         r[index * 2 + 1].final_CBT[real_second_ind].second);
+//                }
 //            }
 //        }
-    }
-    return t.final_CBT[0].second;
+////        for (size_t i = 0; i < x->rules.size(); i++) {
+////            auto &ind = x->rules[i];
+////            double sum = x->fir->CBT_2[ind.ind_l].first + x->sec->CBT_2[ind.ind_r].first;
+////            adds++;
+////            if (i >= x->CBT_2.size())
+////                comps++;
+////            if (x->CBT_2[ind.val].first < sum) {
+////                x->CBT_2[ind.val] = {sum,
+////                                     concat(x->fir->CBT_2[ind.ind_l].second,
+////                                            x->sec->CBT_2[ind.ind_r].second)};
+////            }
+////        }
+//    }
+//    return t.final_CBT[0].second;
 }
 
 size_t log2(size_t x) {
@@ -603,7 +690,7 @@ size_t log2(size_t x) {
 
 long long
 main_decode2(std::vector<CBT> &r, size_t index, const std::vector<double> &data, long long &comps, long long &adds,
-             size_t b, size_t depth, size_t cnt1, size_t cnt2) {
+             size_t b, size_t depth, double eps) {
     CBT &t = r[index];
     if (t.best.size() > b)
         return t.best[b];
@@ -627,118 +714,283 @@ main_decode2(std::vector<CBT> &r, size_t index, const std::vector<double> &data,
             }
             Gray(t, data, comps, adds, true);
         }
+        if (b >= t.best.size()) {
+            t.is_return_false = true;
+            return -1;
+        }
         return t.best[b];
     } else {
+        if (t.is_return_false)
+            return -1;
         size_t lCBT_size = (1ll << x->fir->fourth_sz);
         size_t rCBT_size = (1ll << x->sec->fourth_sz);
-        size_t max_ind_r = std::min(rCBT_size, cnt1 + depth * cnt2);
-        size_t to_count_l = std::min(lCBT_size, cnt1 + depth * cnt2);
-        size_t ind_l = 0;
-        while (max_ind_r != 0) {
-            size_t cnt = 0;
-            t.unused_right.clear();
-            size_t cos_l = main_decode2(r, index * 2, data, comps, adds, ind_l, depth + 1, cnt1, cnt2);
-            if (cos_l == -1)
-                break;
-            if (t.left_index_mapping.find(cos_l) == t.left_index_mapping.end()) {
-                t.left_index_mapping[cos_l] = t.left_neighbors.size();
-                t.left_neighbors.push_back(x->to_mul_left(cos_l));
-            }
-            auto rules_l = t.left_neighbors[t.left_index_mapping[cos_l]];
-            for (auto &i : rules_l) {
-                if (t.index_mapping.find(i.second) == t.index_mapping.end()) {
-                    t.unused_right[i.first] = i.second;
-                    cnt++;
-                }
-            }
-            if (cnt == 0) {
-                ind_l++;
-                if (ind_l == to_count_l)
-                    break;
+        size_t max_ind_r = rCBT_size;
+        for (size_t i = 0; i < t.l_index_to_start; i++) {
+            if (t.l_trash[i])
+                continue;
+            if (t.relevant_indexes_left[i] != -1) {
+                max_ind_r = t.relevant_indexes_left[i];
                 continue;
             }
+            if (max_ind_r <= t.max_calculated_index_left[i])
+                continue;
+            long long cos_l = r[index * 2].best[i];
+            double left_len = r[index * 2].final_CBT[r[index * 2].index_mapping[cos_l]].first;
+
+            bool f = false;
+            for (size_t j = t.max_calculated_index_left[i] + 1; j < max_ind_r; j++) {
+                auto t_neighbor = main_decode2(r, index * 2 + 1, data, comps, adds, j, depth + 1, eps);
+                if (t_neighbor == -1) {
+                    t.l_trash[i] = true;
+                    break;
+                }
+                if (left_len + r[index * 2 + 1].final_CBT[r[index * 2 + 1].index_mapping[t_neighbor]].first <
+                    (t.x->r - t.x->l) * eps) {
+                    max_ind_r = j;
+                    f = true;
+                    t.l_trash[i] = true;
+                    break;
+                }
+                long long coset = -1;
+                if (t.neighbors.find(std::make_pair(cos_l, t_neighbor)) == t.neighbors.end()) {
+                    coset = t.x->check_neighbors(cos_l, t_neighbor);
+                    t.neighbors[std::make_pair(cos_l, t_neighbor)] = coset;
+                } else
+                    coset = t.neighbors[std::make_pair(cos_l, t_neighbor)];
+                if (coset == -1)
+                    continue;
+                if (t.index_mapping.find(coset) == t.index_mapping.end()) {
+                    double sum = r[index * 2].final_CBT[r[index * 2].index_mapping[cos_l]].first +
+                                 r[index * 2 + 1].final_CBT[r[index * 2 + 1].index_mapping[t_neighbor]].first;
+                    t.interested_pairs.insert({-sum, branch(cos_l, t_neighbor, coset)});
+                    adds++;
+                    comps += log2(t.interested_pairs.size());
+//                    while (t.relevant_indexes_right.size() <= j) {
+//                        t.relevant_indexes_right.push_back(-1);
+//                        t.r_trash.push_back(false);
+//                        t.max_calculated_index_right.push_back(-1);
+//                        t.r_index_to_start++;
+//                    }
+//                    t.relevant_indexes_right[j] = i;
+                    max_ind_r = j;
+                    f = true;
+                    t.relevant_indexes_left[i] = max_ind_r;
+                    break;
+                }
+            }
+            if (f)
+                t.max_calculated_index_left[i] = max_ind_r;
+            else
+                t.max_calculated_index_left[i] = max_ind_r - 1;
+            if (max_ind_r == 0)
+                break;
+        }
+        while (max_ind_r != 0) {
+            long long cos_l = main_decode2(r, index * 2, data, comps, adds, t.l_index_to_start, depth + 1, eps);
+            if (cos_l == -1)
+                break;
+            double left_len = r[index * 2].final_CBT[r[index * 2].index_mapping[cos_l]].first;
+            t.l_trash.push_back(false);
+            t.max_calculated_index_left.push_back(-1);
+            t.relevant_indexes_left.push_back(-1);
+
+            t.l_index_to_start++;
             bool f = false;
             for (size_t j = 0; j < max_ind_r; j++) {
-                auto t_neighbor = main_decode2(r, index * 2 + 1, data, comps, adds, j, depth + 1, cnt1, cnt2);
-                if (t_neighbor == -1)
+                auto t_neighbor = main_decode2(r, index * 2 + 1, data, comps, adds, j, depth + 1, eps);
+                if (t_neighbor == -1) {
+                    t.l_trash.back() = true;
                     break;
-                if (t.unused_right.find(t_neighbor) != t.unused_right.end()) {
-                    t.interested_pairs.insert(branch(cos_l, t_neighbor, t.unused_right[t_neighbor]));
+                }
+                if (left_len + r[index * 2 + 1].final_CBT[r[index * 2 + 1].index_mapping[t_neighbor]].first <
+                    (t.x->r - t.x->l) * eps) {
                     max_ind_r = j;
+                    f = true;
+                    t.l_trash.back() = true;
+                    break;
+                }
+                long long coset = -1;
+                if (t.neighbors.find(std::make_pair(cos_l, t_neighbor)) == t.neighbors.end()) {
+                    coset = t.x->check_neighbors(cos_l, t_neighbor);
+                    t.neighbors[std::make_pair(cos_l, t_neighbor)] = coset;
+                } else
+                    coset = t.neighbors[std::make_pair(cos_l, t_neighbor)];
+                if (coset == -1)
+                    continue;
+                if (t.index_mapping.find(coset) == t.index_mapping.end())  {
+                    double sum = r[index * 2].final_CBT[r[index * 2].index_mapping[cos_l]].first +
+                                 r[index * 2 + 1].final_CBT[r[index * 2 + 1].index_mapping[t_neighbor]].first;
+                    t.interested_pairs.insert({-sum, branch(cos_l, t_neighbor, coset)});
+                    adds++;
+                    comps += log2(t.interested_pairs.size());
+                    max_ind_r = j;
+                    t.relevant_indexes_left.back() = max_ind_r;
+//                    while (t.relevant_indexes_right.size() <= j) {
+//                        t.relevant_indexes_right.push_back(-1);
+//                        t.r_trash.push_back(false);
+//                        t.max_calculated_index_right.push_back(-1);
+//                        t.r_index_to_start++;
+//                    }
+//                    t.relevant_indexes_right[max_ind_r] = t.l_index_to_start - 1;
                     f = true;
                     break;
                 }
             }
-            ind_l++;
-            if (ind_l == to_count_l)
+            if (f)
+                t.max_calculated_index_left.back() = max_ind_r;
+            else
+                t.max_calculated_index_left.back() = max_ind_r - 1;
+            if (t.l_index_to_start == lCBT_size)
+                break;
+            if (!f)
                 break;
         }
-//        size_t max_ind_l = lCBT_size;
-//        size_t ind_r = 0;
-//        while (max_ind_l != 0) {
-//            int cnt = 0;
-//            size_t cos_r = main_decode2(r, index * 2 + 1, data, comps, adds, ind_r, depth + 1);
-//            t.unused_left.clear();
-//            if (t.right_index_mapping.find(cos_r) == t.right_index_mapping.end()) {
-//                t.right_index_mapping[cos_r] = t.right_neighbors.size();
-//                t.right_neighbors.push_back(x->to_mul_right(cos_r));
-//            }
-//            auto rules_r = t.right_neighbors[t.right_index_mapping[cos_r]];
-//            for (auto &i : rules_r) {
-//                if (t.index_mapping.find(i.second) == t.index_mapping.end()) {
-//                    t.unused_left[i.first] = i.second;
-//                    cnt++;
-//                }
-//            }
-//            if (cnt == 0) {
-//                ind_r++;
-//                if (t.interested_pairs.size() != 0)
-//                    break;
-//                if (ind_r == rCBT_size)
-//                    break;
-//                continue;
-//            }
-//            bool f = false;
-//            for (size_t j = 0; j < max_ind_l; j++) {
-//                auto t_neighbor = main_decode2(r, index * 2, data, comps, adds, j, depth + 1);
-//                if (t.unused_left.find(t_neighbor) != t.unused_left.end()) {
-//                    t.interested_pairs.insert(branch(t_neighbor, cos_r, t.unused_left[t_neighbor]));
-//                    max_ind_l = j;
-//                    f = true;
-//                    break;
-//                }
-//            }
-//            ind_r++;
-//            if (ind_r == rCBT_size)
-//                break;
-//            if (!f)
-//                break;
-//        }
-        //assert(x->interested_pairs.size() != 0);
-        if (t.interested_pairs.size() == 0)
-            return -1;
-        branch best_pair;
-        double mx = -1000000;
-        for (auto it : t.interested_pairs) {
-            size_t real_left_index = r[index * 2].index_mapping[it.ind_l];
-            size_t real_right_index = r[index * 2 + 1].index_mapping[it.ind_r];
-            double val = r[index * 2].final_CBT[real_left_index].first +
-                         r[index * 2 + 1].final_CBT[real_right_index].first;
-            adds++;
-            comps++;
-            if (val > mx) {
-                mx = val;
-                best_pair = it;
+        size_t max_ind_l = lCBT_size;
+        for (size_t i = 0; i < t.r_index_to_start; i++) {
+            if (t.r_trash[i])
+                continue;
+            if (t.relevant_indexes_right[i] != -1) {
+                max_ind_l = t.relevant_indexes_right[i];
+                continue;
             }
+            if (max_ind_l <= t.max_calculated_index_right[i] + 1)
+                continue;
+            long long cos_r = r[index * 2 + 1].best[i];
+            double len_r = r[index * 2 + 1].final_CBT[r[index * 2 + 1].index_mapping[cos_r]].first;
+            bool f = false;
+            for (size_t j = t.max_calculated_index_right[i] + 1; j < max_ind_l; j++) {
+                auto t_neighbor = main_decode2(r, index * 2, data, comps, adds, j, depth + 1, eps);
+                if (t_neighbor == -1) {
+                    t.r_trash[i] = true;
+                    break;
+                }
+                if (r[index * 2].final_CBT[r[index * 2].index_mapping[t_neighbor]].first + len_r <
+                    (t.x->r - t.x->l) * eps) {
+                    max_ind_l = j;
+                    f = true;
+                    t.r_trash[i] = true;
+                    break;
+                }
+                long long coset = -1;
+                if (t.neighbors.find(std::make_pair(t_neighbor, cos_r)) == t.neighbors.end()) {
+                    coset = t.x->check_neighbors(t_neighbor, cos_r);
+                    t.neighbors[std::make_pair(t_neighbor, cos_r)] = coset;
+                } else
+                    coset = t.neighbors[std::make_pair(t_neighbor, cos_r)];
+                if (coset == -1)
+                    continue;
+                if (t.index_mapping.find(coset) == t.index_mapping.end()) {
+                    double sum = r[index * 2].final_CBT[r[index * 2].index_mapping[t_neighbor]].first +
+                                 r[index * 2 + 1].final_CBT[r[index * 2 + 1].index_mapping[cos_r]].first;
+                    adds++;
+                    comps += log2(t.index_mapping.size());
+                    t.interested_pairs.insert({-sum, branch(t_neighbor, cos_r, coset)});
+                    max_ind_l = j;
+                    t.relevant_indexes_right[i] = j;
+//                    while (t.relevant_indexes_left.size() <= j) {
+//                        t.relevant_indexes_left.push_back(-1);
+//                        t.max_calculated_index_left.push_back(-1);
+//                        t.l_trash.push_back(false);
+//                        t.l_index_to_start++;
+//                    }
+//                    t.relevant_indexes_left[j] = i;
+                    f = true;
+                    break;
+                }
+            }
+            if (f)
+                t.max_calculated_index_right[i] = max_ind_l;
+            else
+                t.max_calculated_index_right[i] = max_ind_l - 1;
+            if (max_ind_l == 0)
+                break;
         }
-        comps--;
+        while (max_ind_l != 0) {
+            size_t cos_r = main_decode2(r, index * 2 + 1, data, comps, adds, t.r_index_to_start, depth + 1, eps);
+            if (cos_r == -1)
+                break;
+            double len_r = r[index * 2 + 1].final_CBT[r[index * 2 + 1].index_mapping[cos_r]].first;
+            t.max_calculated_index_right.push_back(-1);
+            t.r_trash.push_back(false);
+            t.relevant_indexes_right.push_back(-1);
+            bool f = false;
+            for (size_t j = 0; j < max_ind_l; j++) {
+                auto t_neighbor = main_decode2(r, index * 2, data, comps, adds, j, depth + 1, eps);
+                if (t_neighbor == -1) {
+                    t.r_trash.back() = true;
+                    break;
+                }
+                if (r[index * 2].final_CBT[r[index * 2].index_mapping[t_neighbor]].first + len_r <
+                    (t.x->r - t.x->l) * eps) {
+                    max_ind_l = j;
+                    f = true;
+                    t.r_trash.back() = true;
+                    break;
+                }
+                long long coset = -1;
+                if (t.neighbors.find(std::make_pair(t_neighbor, cos_r)) == t.neighbors.end()) {
+                    coset = t.x->check_neighbors(t_neighbor, cos_r);
+                    t.neighbors[std::make_pair(t_neighbor, cos_r)] = coset;
+                } else
+                    coset = t.neighbors[std::make_pair(t_neighbor, cos_r)];
+                if (coset == -1)
+                    continue;
+                if (t.index_mapping.find(coset) == t.index_mapping.end()) {
+                    double sum = r[index * 2].final_CBT[r[index * 2].index_mapping[t_neighbor]].first +
+                                 r[index * 2 + 1].final_CBT[r[index * 2 + 1].index_mapping[cos_r]].first;
+                    adds++;
+                    comps += log2(t.interested_pairs.size());
+                    t.interested_pairs.insert({-sum, branch(t_neighbor, cos_r, coset)});
+                    max_ind_l = j;
+                    t.relevant_indexes_right.back() = max_ind_l;
+//                    while (t.relevant_indexes_left.size() <= max_ind_l) {
+//                        t.relevant_indexes_left.push_back(-1);
+//                        t.l_trash.push_back(false);
+//                        t.max_calculated_index_left.push_back(-1);
+//                        t.l_index_to_start++;
+//                    }
+//                    t.relevant_indexes_left[max_ind_l] = t.r_index_to_start;
+                    f = true;
+                    break;
+                }
+            }
+            t.r_index_to_start++;
+            if (f)
+                t.max_calculated_index_right[t.r_index_to_start - 1] = max_ind_l;
+            else
+                t.max_calculated_index_right[t.r_index_to_start - 1] = max_ind_l - 1;
+            if (t.r_index_to_start == rCBT_size)
+                break;
+            if (!f)
+                break;
+        }
+        //assert(x->interested_pairs.size() != 0);
+        if (t.interested_pairs.size() == 0) {
+            t.is_return_false = true;
+            return -1;
+        }
+
+        auto best_pair = t.interested_pairs.begin()->second;
+        double mx = -t.interested_pairs.begin()->first;
+
         t.best.push_back(best_pair.val);
         t.index_mapping[best_pair.val] = t.final_CBT.size();
         size_t real_left_index = r[index * 2].index_mapping[best_pair.ind_l];
         size_t real_right_index = r[index * 2 + 1].index_mapping[best_pair.ind_r];
         t.final_CBT.push_back({mx, concat(r[index * 2].final_CBT[real_left_index].second,
                                           r[index * 2 + 1].final_CBT[real_right_index].second)});
+        std::set<std::pair<double, branch>> tmp;
+        for (auto it : t.interested_pairs) {
+            if (it.second.val == best_pair.val) {
+                if (r[index * 2].index_mapping[it.second.ind_l] < t.relevant_indexes_left.size())
+                    t.relevant_indexes_left[r[index * 2].index_mapping[it.second.ind_l]] = -1;
+                if (r[index * 2 + 1].index_mapping[it.second.ind_r] < t.relevant_indexes_right.size())
+                    t.relevant_indexes_right[r[index * 2 + 1].index_mapping[it.second.ind_r]] = -1;
+            } else
+                tmp.insert(it);
+        }
         t.interested_pairs.clear();
+        t.interested_pairs = tmp;
         return best_pair.val;
     }
 }
@@ -748,15 +1000,25 @@ void clear_structures(std::vector<CBT> &t, size_t index) {
     t[index].final_CBT.clear();
     t[index].interested_pairs.clear();
     t[index].index_mapping.clear();
+    t[index].is_return_false = false;
+    t[index].l_index_to_start = 0;
+    t[index].r_index_to_start = 0;
+    t[index].max_calculated_index_left.clear();
+    t[index].max_calculated_index_right.clear();
+    t[index].l_trash.clear();
+    t[index].r_trash.clear();
+    t[index].relevant_indexes_left.clear();
+    t[index].relevant_indexes_right.clear();
     if (t[index].x->is_leaf)
         return;
     clear_structures(t, index * 2);
     clear_structures(t, index * 2 + 1);
 }
 
-std::vector<bool> decode2(std::vector<CBT> &t, const std::vector<double> &data, long long &comps, long long &adds, size_t cnt1, size_t cnt2) {
+std::vector<bool>
+decode2(std::vector<CBT> &t, const std::vector<double> &data, long long &comps, long long &adds, double eps) {
     clear_structures(t, 1);
-    auto ind = main_decode2(t, 1, data, comps, adds, 0, 0, cnt1, cnt2);
+    auto ind = main_decode2(t, 1, data, comps, adds, 0, 0, eps);
     if (ind == -1)
         return std::vector<bool>(t[1].x->r - t[1].x->l, false);
     return t[1].final_CBT[ind].second;
@@ -799,7 +1061,7 @@ void check(int r, int m, bool f) {
             for (size_t j = 0; j < coded.size(); j++)
                 noise.push_back(d(gen));
             auto x = add_noise(coded, noise);
-            auto recieved = (f) ? decode2(all_CBTs, x, comps, adds, 100, 100) : decode(all_CBTs, 1, x, comps, adds);
+            auto recieved = (f) ? decode2(all_CBTs, x, comps, adds, 0.1) : decode(all_CBTs, 1, x, comps, adds);
             auto decoded = get_message(t, recieved);
             cnt += cmp(decoded, word);
 
@@ -816,16 +1078,18 @@ void check(int r, int m, bool f) {
 
 void one_thread_work(std::vector<CBT> &q, std::vector<std::vector<bool>> &before_noise,
                      const std::vector<std::vector<double>> &codewords, long long &adds, long long &comps,
-                     size_t &good, size_t cnt1, size_t cnt2) {
+                     size_t &good, double eps) {
     for (size_t i = 0; i < codewords.size(); i++) {
-        auto recieve = decode2(q, codewords[i], comps, adds, cnt1, cnt2);
-        if (i % 2 == 0)
-            std::cout << i << " " << (adds + comps) / (i + 1) << "\n";
-        good += cmp(recieve, before_noise[i]);
+        auto recieve = decode2(q, codewords[i], comps, adds, eps);
+        if (cmp(recieve, before_noise[i])) {
+            good++;
+        }
+        if (i % 10 == 0)
+            std::cout << i << " " << (adds + comps) / (i + 1) << " " << (double) good / (i + 1) << "\n";
     }
 }
 
-void check_polar(size_t n, size_t k, bool f, size_t cnt_iter, size_t threads_cnt, size_t cnt1, size_t cnt2) {
+void check_polar(size_t n, size_t k, bool f, size_t cnt_iter, size_t threads_cnt, double eps) {
     std::random_device rd{};
     std::mt19937 gen{rd()};
     std::vector<long long> comps(threads_cnt), adds(threads_cnt);
@@ -840,17 +1104,17 @@ void check_polar(size_t n, size_t k, bool f, size_t cnt_iter, size_t threads_cnt
 //                     size_t &goodd) {
 //        return one_thread_work(q, before_noise, codewords, comps1, adds1, goodd);
 //    };
-    for (double Eb_N0_dB = 1.0; Eb_N0_dB <= 5.0; Eb_N0_dB += 0.5) {
+    for (double Eb_N0_dB = 4.0; Eb_N0_dB <= 5.0; Eb_N0_dB += 0.5) {
         std::vector<std::vector<CBT>> all_CBT(threads_cnt, std::vector<CBT>(4 * n));
         double sigma_square = 0.5 * ((double) n / k) * ((double) pow(10.0, -Eb_N0_dB / 10));
         std::normal_distribution<> d{0, sqrt(sigma_square)};
+//        std::cout << std::fixed << Eb_N0_dB << ' ' << sigma_square << ' ' << ' ' << sqrt(sigma_square) << "\n";
         q.reuse_frozen(sqrt(sigma_square));
         auto v = q.getRealGenMatrix();
         matrix t(v);
         auto *ptr = new pMatrix(0, t.m);
         t.to_span();
         prepare(ptr, t, f);
-        std::cout << ptr->difficult << "\n";
         run(ptr, t);
         for (size_t i = 0; i < threads_cnt; i++) {
             fill_vector_pMatrix(all_CBT[i], ptr, 1);
@@ -879,8 +1143,9 @@ void check_polar(size_t n, size_t k, bool f, size_t cnt_iter, size_t threads_cnt
             with_noise[i % threads_cnt].push_back(x);
         }
         for (size_t i = 0; i < threads_cnt; i++)
-            threads.push_back(std::thread(one_thread_work, std::ref(all_CBT[i]), std::ref(before_coded[i]), std::cref(with_noise[i]),
-                              std::ref(adds[i]), std::ref(comps[i]), std::ref(goods[i]), std::ref(cnt1), std::ref(cnt2)));
+            threads.push_back(std::thread(one_thread_work, std::ref(all_CBT[i]), std::ref(before_coded[i]),
+                                          std::cref(with_noise[i]),
+                                          std::ref(adds[i]), std::ref(comps[i]), std::ref(goods[i]), std::ref(eps)));
         std::cout.precision(7);
         for (size_t i = 0; i < threads.size(); i++)
             threads[i].join();
@@ -904,7 +1169,8 @@ int main() {
 //    check(3, 6, true);
 //    check(3, 6, true);
 //    check_polar(256, 128, true, 1000, 8);
-    check_polar(512, 256, true, 24, 8, 50, 100);
+    double eps = 0.3;
+    check_polar(256, 128, true, 64, 8, eps);
 //    check_polar(1024, 512, true, 0);
 
     return 0;
