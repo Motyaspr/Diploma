@@ -168,6 +168,14 @@ struct pMatrix {
         auto reversed_prepared = systematic_form_matrix;
         swaps = systematic_form(systematic_form_matrix);
         reversed = get_reversed_matrix(reversed_prepared, swaps);
+        std::vector<std::vector<bool>> splitted_reversed;
+        for (size_t i = 0; i < reversed.size(); i++) {
+            std::vector<bool> tmp;
+            for (size_t j = third_sz; j < third_sz + fourth_sz; j++)
+                tmp.push_back(reversed[i][j]);
+            splitted_reversed.push_back(tmp);
+        }
+        reversed = splitted_reversed;
         std::vector<std::vector<bool>> check_mt;
         for (size_t i = 0; i < systematic_form_matrix.size(); i++) {
             std::vector<bool> tmp;
@@ -349,9 +357,24 @@ struct pMatrix {
                 return -1;
         auto ttr = mulVectorMatrix(t, reversed);
         long long num = 0;
-        for (size_t i = third_sz; i < third_sz + fourth_sz; i++)
+        for (size_t i = 0; i < ttr.size(); i++)
             num = num * 2 + ttr[i];
         return num;
+    }
+
+    std::vector<bool> check_neighbors(const std::vector<bool> &a_vec, const std::vector<bool> &b_vector) const {
+        auto a_vector = concat(a_vec, b_vector);
+        auto t = mulVectorMatrix(a_vector, G);
+        for (auto &j : swaps)
+            std::swap(t[j.first], t[j.second]);
+        auto tt = mulVectorMatrix(t, check_matrix);
+        for (auto &&j : tt)
+            if (j)
+                return std::vector<bool>();
+        auto ttr = mulVectorMatrix(t, reversed);
+        if (ttr.size() == 0)
+            ttr.push_back(false);
+        return ttr;
     }
 
 
@@ -425,11 +448,10 @@ struct CBT {
     std::set<std::pair<double, branch>> interested_pairs;
     std::vector<std::pair<double, std::vector<bool>>> final_CBT;
     std::map<long long, long long> index_mapping;
+    std::map<unsigned long long, long long> index_mapping_vector;
     bool is_return_false;
-    size_t l_index_to_start, r_index_to_start;
-    std::vector<bool> l_trash, r_trash;
-    std::vector<int> max_calculated_index_left, max_calculated_index_right;
-    std::vector<int> relevant_indexes_left, relevant_indexes_right;
+    std::vector<std::vector<bool>> best_vector;
+    std::unordered_map<unsigned long long, std::vector<bool>> hash_to_vector;
     std::unordered_map<std::pair<long long, long long>, long long, pair_hash> neighbors;
 
     CBT() = default;
@@ -568,19 +590,20 @@ void Gray(CBT &t, const std::vector<double> &data, long long &comps, long long &
         std::set<std::pair<double, size_t>> s;
         for (size_t i = 0; i < t.final_CBT.size(); i++)
             s.insert({-t.final_CBT[i].first, i});
-        std::vector<std::pair<double, std::vector<bool>>> tmp;
-        size_t j = 0;
         for (auto it : s) {
             t.best.push_back(it.second);
-            tmp.push_back(t.final_CBT[it.second]);
-            t.index_mapping[it.second] = j++;
+            std::vector<bool> tmp(x->r - x->l);
+            to_vector2(it.second, tmp);
+            t.best_vector.push_back(tmp);
         }
-        t.final_CBT.clear();
-        t.final_CBT = tmp;
 
-    } else {
-        for (size_t i = 0; i < t.final_CBT.size(); i++)
-            t.index_mapping[i] = i;
+    }
+
+    for (size_t i = 0; i < t.final_CBT.size(); i++) {
+        std::vector<bool>tmp(x->r - x->l, false);
+        to_vector2(i, tmp);
+        t.index_mapping[i] = i;
+        t.index_mapping_vector[std::hash<std::vector<bool>>{}(tmp)] = i;
     }
 
 }
@@ -729,7 +752,7 @@ main_decode2(std::vector<CBT> &r, size_t index, const std::vector<double> &data,
         size_t ind_l = 0;
         double porog = (x->r - x->l) * eps;
         while (max_ind_r != 0) {
-            size_t cos_l = main_decode2(r, index * 2, data, comps, adds, ind_l, depth + 1, cnt1 * 2, eps);
+            long long cos_l = main_decode2(r, index * 2, data, comps, adds, ind_l, depth + 1, cnt1 * 2, eps);
             if (cos_l == -1)
                 break;
             for (size_t j = 0; j < max_ind_r; j++) {
@@ -781,12 +804,110 @@ main_decode2(std::vector<CBT> &r, size_t index, const std::vector<double> &data,
     }
 }
 
+std::vector<bool>
+vector_main_decode2(std::vector<CBT> &r, size_t index, const std::vector<double> &data, long long &comps, long long &adds,
+             size_t b, size_t depth, size_t cnt1, double eps) {
+    CBT &t = r[index];
+    if (t.best_vector.size() > b)
+        return t.best_vector[b];
+    auto x = t.x;
+    if (x->is_leaf) {
+        if (t.best_vector.size() == 0) {
+            std::vector<bool> to_push(x->r - x->l, false);
+            t.final_CBT.assign(t.final_CBT.size(), {-INF, {}});
+            if (x->r - x->l == 1) {
+                int curs = (data[x->l] > 0) ? 1 : 0;
+                double value = (data[x->l] > 0) ? data[x->l] : -data[x->l];
+                t.final_CBT.assign(t.final_CBT.size(), {-INF, {}});
+                to_vector(curs, to_push);
+                t.final_CBT[x->rules[curs].val] = {value, to_push};
+                to_push.assign(to_push.size(), false);
+                if (x->mt[0][0]) {
+                    to_vector(1 ^ curs, to_push);
+                    t.final_CBT[x->rules[1 ^ curs].val] = {-value, to_push};
+                }
+                return std::vector<bool>();
+            }
+            Gray(t, data, comps, adds, true);
+        }
+        if (b >= t.best_vector.size()) {
+            t.is_return_false = true;
+            return std::vector<bool>();
+        }
+        return t.best_vector[b];
+    } else {
+        if (t.is_return_false)
+            std::vector<bool>();
+        size_t lCBT_size = (1ll << x->fir->fourth_sz);
+        size_t rCBT_size = (1ll << x->sec->fourth_sz);
+        size_t max_ind_r = std::min(rCBT_size, cnt1);
+        if (x->fir->fourth_sz > 62)
+            max_ind_r = cnt1;
+        size_t to_count_l = std::min(lCBT_size, cnt1);
+        if (x->sec->fourth_sz > 62)
+            to_count_l = cnt1;
+        size_t ind_l = 0;
+        double porog = (x->r - x->l) * eps;
+        while (max_ind_r != 0) {
+            auto cos_l = vector_main_decode2(r, index * 2, data, comps, adds, ind_l, depth + 1, cnt1 * 2, eps);
+            if (cos_l.empty())
+                break;
+            auto h_cos_l = std::hash<std::vector<bool>>{}(cos_l);
+            double l_len = r[index * 2].final_CBT[r[index * 2].index_mapping_vector[h_cos_l]].first;
+            for (size_t j = 0; j < max_ind_r; j++) {
+                std::vector<bool> t_neighbor = vector_main_decode2(r, index * 2 + 1, data, comps, adds, j, depth + 1, cnt1 * 2, eps);
+                auto ht_neighbor = std::hash<std::vector<bool>>{}(t_neighbor);
+                if (t_neighbor.empty())
+                    break;
+                if (l_len +
+                    r[index * 2 + 1].final_CBT[r[index * 2 + 1].index_mapping_vector[ht_neighbor]].first < porog) {
+                    max_ind_r = j;
+                    break;
+                }
+                auto coset = x->check_neighbors(cos_l, t_neighbor);
+                if (coset.empty())
+                    continue;
+                auto h_coset = std::hash<std::vector<bool>>{}(coset);
+                t.hash_to_vector[h_coset] = coset;
+                if (t.index_mapping_vector.find(h_coset) == t.index_mapping_vector.end()) {
+                    double sum = l_len +
+                                 r[index * 2 + 1].final_CBT[r[index * 2 + 1].index_mapping_vector[ht_neighbor]].first;
+                    t.interested_pairs.insert({-sum, branch(h_cos_l, ht_neighbor, h_coset)});
+                    max_ind_r = j;
+                    break;
+                }
+            }
+            ind_l++;
+            if (ind_l == to_count_l)
+                break;
+        }
+        if (t.interested_pairs.size() == 0) {
+            t.is_return_false = true;
+            std::vector<bool>();
+        }
+        branch best_pair = t.interested_pairs.begin()->second;
+        double mx = -t.interested_pairs.begin()->first;
+        comps += t.interested_pairs.size() * log2(t.interested_pairs.size());
+
+        t.best_vector.push_back(t.hash_to_vector[best_pair.val]);
+        t.index_mapping_vector[best_pair.val] = t.final_CBT.size();
+        size_t real_left_index = r[index * 2].index_mapping_vector[best_pair.ind_l];
+        size_t real_right_index = r[index * 2 + 1].index_mapping_vector[best_pair.ind_r];
+        t.final_CBT.push_back({mx, concat(r[index * 2].final_CBT[real_left_index].second,
+                                          r[index * 2 + 1].final_CBT[real_right_index].second)});
+        t.interested_pairs.clear();
+        return t.best_vector.back();
+    }
+}
+
 void clear_structures(std::vector<CBT> &t, size_t index) {
     t[index].best.clear();
     t[index].final_CBT.clear();
     t[index].interested_pairs.clear();
     t[index].index_mapping.clear();
     t[index].is_return_false = false;
+    t[index].best_vector.clear();
+    t[index].index_mapping_vector.clear();
     if (t[index].x->is_leaf)
         return;
     clear_structures(t, index * 2);
@@ -800,6 +921,15 @@ decode2(std::vector<CBT> &t, const std::vector<double> &data, long long &comps, 
     if (ind == -1)
         return std::vector<bool>(t[1].x->r - t[1].x->l, false);
     return t[1].final_CBT[ind].second;
+}
+
+std::vector<bool>
+vector_decode2(std::vector<CBT> &t, const std::vector<double> &data, long long &comps, long long &adds, int cnt1, double eps) {
+    clear_structures(t, 1);
+    auto ind = vector_main_decode2(t, 1, data, comps, adds, 0, 0, cnt1, eps);
+    if (ind.empty())
+        return std::vector<bool>(t[1].x->r - t[1].x->l, false);
+    return t[1].final_CBT[0].second;
 }
 
 void fill_vector_pMatrix(std::vector<CBT> &t, pMatrix *x, size_t ind) {
@@ -857,9 +987,24 @@ void check(int r, int m, bool f) {
 void one_thread_work(std::vector<CBT> &q, std::vector<std::vector<bool>> &before_noise,
                      const std::vector<std::vector<double>> &codewords, long long &adds, long long &comps,
                      size_t &good, int cnt1, double eps) {
-    std::cout << cnt1 << ' ' << eps << "\n";
+//    std::cout << cnt1 << ' ' << eps << "\n";
     for (size_t i = 0; i < codewords.size(); i++) {
         auto recieve = decode2(q, codewords[i], comps, adds, cnt1, eps);
+        if (cmp(recieve, before_noise[i])) {
+            good++;
+        }
+        if (i % 10 == 0)
+            std::cout << i << " " << (adds + comps) / (i + 1) << " " << (double) good / (i + 1) << "\n";
+    }
+}
+
+void one_thread_work_vector(std::vector<CBT> &q, std::vector<std::vector<bool>> &before_noise,
+                     const std::vector<std::vector<double>> &codewords, long long &adds, long long &comps,
+                     size_t &good, int cnt1, double eps) {
+
+//    std::cout << cnt1 << ' ' << eps << "\n";
+    for (size_t i = 0; i < codewords.size(); i++) {
+        auto recieve = vector_decode2(q, codewords[i], comps, adds, cnt1, eps);
         if (cmp(recieve, before_noise[i])) {
             good++;
         }
@@ -878,7 +1023,7 @@ double get_corel(const std::vector<bool> &x, const std::vector<double> &y, size_
     return summ;
 }
 
-void check_polar(size_t n, size_t k, bool f, size_t cnt_iter, size_t threads_cnt, double eps, int cnt1) {
+void check_polar(size_t n, size_t k, bool f, size_t cnt_iter, size_t threads_cnt, double eps, int cnt1, bool is_vector) {
     std::random_device rd{};
     std::mt19937 gen{rd()};
     std::vector<long long> comps(threads_cnt), adds(threads_cnt);
@@ -893,7 +1038,7 @@ void check_polar(size_t n, size_t k, bool f, size_t cnt_iter, size_t threads_cnt
 //                     size_t &goodd) {
 //        return one_thread_work(q, before_noise, codewords, comps1, adds1, goodd);
 //    };
-    for (double Eb_N0_dB = 4.0; Eb_N0_dB <= 5.0; Eb_N0_dB += 0.5) {
+    for (double Eb_N0_dB = 4.5; Eb_N0_dB <= 5.0; Eb_N0_dB += 0.5) {
         std::vector<std::vector<CBT>> all_CBT(threads_cnt, std::vector<CBT>(4 * n));
         double sigma_square = 0.5 * ((double) n / k) * ((double) pow(10.0, -Eb_N0_dB / 10));
         std::normal_distribution<> d{0, sqrt(sigma_square)};
@@ -920,6 +1065,7 @@ void check_polar(size_t n, size_t k, bool f, size_t cnt_iter, size_t threads_cnt
         for (size_t i = 0; i < cnt_iter; i++) {
             std::vector<bool> word = gen_rand_vect(t.n);
             std::vector<bool> coded = mulVectorMatrix(word, v);
+            auto t = std::hash<std::vector<bool>>{}(coded);
 //            std::vector<bool> new_coded = mulVectorMatrix(word, v);
 
             std::vector<double> noise;
@@ -927,7 +1073,6 @@ void check_polar(size_t n, size_t k, bool f, size_t cnt_iter, size_t threads_cnt
             for (size_t j = 0; j < coded.size(); j++)
                 noise.push_back(d(gen));
             auto x = add_noise(coded, noise);
-            int ind = 0;
             before_coded[i % threads_cnt].push_back(coded);
             with_noise[i % threads_cnt].push_back(x);
 //            for (size_t j = 0; j < corel.size(); j++)
@@ -935,10 +1080,17 @@ void check_polar(size_t n, size_t k, bool f, size_t cnt_iter, size_t threads_cnt
 //            std::cout << "\n";
         }
         for (size_t i = 0; i < threads_cnt; i++)
-            threads.push_back(std::thread(one_thread_work, std::ref(all_CBT[i]), std::ref(before_coded[i]),
-                                          std::cref(with_noise[i]),
-                                          std::ref(adds[i]), std::ref(comps[i]), std::ref(goods[i]), std::ref(cnt1),
-                                          std::ref(eps)));
+            if (is_vector) {
+                threads.push_back(std::thread(one_thread_work, std::ref(all_CBT[i]), std::ref(before_coded[i]),
+                                              std::cref(with_noise[i]),
+                                              std::ref(adds[i]), std::ref(comps[i]), std::ref(goods[i]), std::ref(cnt1),
+                                              std::ref(eps)));
+            } else {
+                threads.push_back(std::thread(one_thread_work_vector, std::ref(all_CBT[i]), std::ref(before_coded[i]),
+                            std::cref(with_noise[i]),
+                            std::ref(adds[i]), std::ref(comps[i]), std::ref(goods[i]), std::ref(cnt1),
+                            std::ref(eps)));
+            }
         std::cout.precision(7);
         for (size_t i = 0; i < threads.size(); i++)
             threads[i].join();
@@ -962,8 +1114,7 @@ int main() {
 //    check(3, 6, true);
 //    check(3, 6, true);
 //    check_polar(256, 128, true, 1000, 8);
-    double eps = 0.2;
-    check_polar(512, 256, true, 240, 6, eps, 252);
+    check_polar(1024, 512, true, 12, 1, eps, 360, false);
 //    check_polar(1024, , true, 0);
 
     return 0;
